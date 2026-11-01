@@ -40,17 +40,35 @@ func main() {
 
 	addr := env("LISTEN", ":8080")
 	log.Printf("floor-heating listening on %s, polling every %s", addr, interval)
-	srv := &http.Server{Addr: addr, Handler: newMux(s, kick), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Addr: addr, Handler: newMux(s, kick, interval), ReadHeaderTimeout: 10 * time.Second}
 	log.Fatal(srv.ListenAndServe())
 }
 
-func newMux(s *store, kick chan<- struct{}) *http.ServeMux {
+func newMux(s *store, kick chan<- struct{}, interval time.Duration) *http.ServeMux {
 	static, _ := fs.Sub(webFS, "web")
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(http.FS(static)))
 	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(s.status())
+	})
+	mux.HandleFunc("GET /api/series", func(w http.ResponseWriter, r *http.Request) {
+		rng, ok := ranges[r.URL.Query().Get("range")]
+		if !ok {
+			http.Error(w, "want range=24h, 7d or 30d", http.StatusBadRequest)
+			return
+		}
+		to := time.Now().UTC()
+		lines, err := s.series(to.Add(-rng.span), to, rng.step, interval)
+		if err != nil {
+			http.Error(w, "cannot read history", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"from": to.Add(-rng.span).UnixMilli(), "to": to.UnixMilli(),
+			"step": rng.step.Milliseconds(), "series": lines,
+		})
 	})
 	mux.HandleFunc("PUT /api/devices", func(w http.ResponseWriter, r *http.Request) {
 		// JSON only: a cross-site form cannot send this content type without a preflight.
