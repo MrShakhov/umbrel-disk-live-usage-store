@@ -129,6 +129,7 @@ type deviceStatus struct {
 	Name   string   `json:"name"`
 	IP     string   `json:"ip"`
 	Latest *reading `json:"latest,omitempty"`
+	State  *state   `json:"state,omitempty"`
 }
 
 func (s *store) status() []deviceStatus {
@@ -139,6 +140,10 @@ func (s *store) status() []deviceStatus {
 		st := deviceStatus{ID: d.ID, Name: d.Name, IP: d.IP}
 		if r, ok := s.last[d.ID]; ok {
 			st.Latest = &r
+			if r.Err == "" {
+				decoded := decode(r.DPS)
+				st.State = &decoded
+			}
 		}
 		out = append(out, st)
 	}

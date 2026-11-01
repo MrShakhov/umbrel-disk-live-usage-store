@@ -7,36 +7,60 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <style>
 :root{
-  --bg:#0d0d11; --card:rgba(255,255,255,.045); --line:rgba(255,255,255,.08);
+  --bg:#0d0d11; --card:#17171c; --line:rgba(255,255,255,.08);
   --text:#f2f2f5; --muted:#8c8c99; --accent:#ff8a4c; --ok:#3ccf91; --bad:#ff5c5c;
+  --temp:#3f8cf0; --heat:#e0661f;
   color-scheme:dark;
 }
 @media (prefers-color-scheme: light){
   :root{
     --bg:#f3f3f6; --card:#fff; --line:rgba(0,0,0,.08);
     --text:#16161a; --muted:#6b6b78; --accent:#e0661f;
+    --temp:#1f6fe0; --heat:#e0661f;
     color-scheme:light;
   }
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
 main{max-width:860px;margin:0 auto;padding:24px 16px 40px}
-header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
 h1{font-size:22px;font-weight:650;margin:0;letter-spacing:-.01em}
-h2{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:28px 0 10px}
+h2{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:20px 0 10px}
 .status{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:13px;margin-left:auto}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
 .dot.live{background:var(--ok)}
 .dot.down{background:var(--bad)}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+.range{display:flex;gap:4px}
+.range button{padding:5px 10px}
+.range button[aria-pressed=true]{background:var(--text);border-color:var(--text);color:var(--bg);font-weight:600}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-left:auto}
+.legend span{display:flex;align-items:center;gap:6px}
+.key{width:16px;height:0;border-top:2px solid var(--temp)}
+.key.set{border-top:2px dashed var(--muted)}
+.key.heat{height:8px;border:0;border-radius:2px;background:var(--heat)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;position:relative}
 .top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .name{font-weight:620;font-size:15px}
 .when{color:var(--muted);font-size:12px;margin-left:auto}
+.figures{display:flex;gap:24px;flex-wrap:wrap;align-items:baseline;margin-top:8px}
+.big{font-size:30px;font-weight:650;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.15}
+.fig{font-variant-numeric:tabular-nums}
+.fig span{display:block;font-size:12px;color:var(--muted)}
+.state{display:inline-flex;align-items:center;gap:6px;font-size:13px}
+.state i{width:8px;height:8px;border-radius:2px;background:var(--muted)}
+.state.on i{background:var(--heat)}
 .err{color:var(--bad);font-size:13px;margin-top:6px;overflow-wrap:anywhere}
-.dps{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-top:10px}
+.chart{display:block;width:100%;margin-top:10px;touch-action:pan-y;outline-offset:2px}
+.chart text{font-size:11px;fill:var(--muted);font-variant-numeric:tabular-nums}
+.empty{color:var(--muted)}
+.tip{position:absolute;pointer-events:none;z-index:2;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12px;line-height:1.5;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+.tip b{font-size:13px;font-variant-numeric:tabular-nums}
+.tip div{color:var(--muted)}
+details>summary{cursor:pointer;color:var(--muted);font-size:12px;margin-top:10px}
+.dps{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px;margin-top:8px}
 .dp{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .dp span{display:block;font-size:12px;color:var(--muted)}
-.empty{color:var(--muted)}
 .fields{display:grid;grid-template-columns:1fr 1.4fr 1fr 1fr auto;gap:8px;margin-bottom:8px}
 @media (max-width:700px){.fields{grid-template-columns:1fr}}
 input,textarea{width:100%;font:inherit;color:inherit;background:transparent;border:1px solid var(--line);border-radius:8px;padding:7px 9px}
@@ -56,12 +80,19 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff;fo
     <div class="status"><span class="dot" id="dot"></span><span id="summary">Loading…</span></div>
   </header>
 
-  <h2>Thermostats</h2>
+  <div class="bar">
+    <div class="range" id="range" role="group" aria-label="Time range"></div>
+    <div class="legend">
+      <span><i class="key"></i>Room temperature</span>
+      <span><i class="key set"></i>Set temperature</span>
+      <span><i class="key heat"></i>Heating on</span>
+    </div>
+  </div>
   <div id="devices"></div>
 
-  <h2>Devices</h2>
-  <div class="card">
-    <div id="rows"></div>
+  <details class="card" id="setup">
+    <summary>Devices</summary>
+    <div id="rows" style="margin-top:12px"></div>
     <div class="actions">
       <button type="button" id="add">Add device</button>
       <button type="button" class="primary" id="save">Save</button>
@@ -71,18 +102,235 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff;fo
     <h2>Import devices.json</h2>
     <textarea id="paste" placeholder="Paste the output of the TinyTuya wizard to fill the rows above" spellcheck="false" autocomplete="off"></textarea>
     <div class="actions"><button type="button" id="import">Fill rows</button></div>
-  </div>
+  </details>
 </main>
 <script>
 const $ = id => document.getElementById(id);
 const FIELDS = [["name","Name"],["id","Device ID"],["ip","IP address"],["key","Local key"]];
+const RANGES = [["24h","24 hours"],["7d","7 days"],["30d","30 days"]];
+const CHART = {height:190, left:30, right:6, top:8, stripGap:8, strip:8, axis:20};
+let range = "24h";
+try{ range = RANGES.some(r => r[0] === localStorage.range) ? localStorage.range : range; }catch{}
 let editing = false;
+let history = null;
+const cards = new Map();
+
+const fmt = v => v == null ? "–" : v.toFixed(1) + " °C";
+
+function el(tag, cls, text){
+  const e = document.createElement(tag);
+  if(cls) e.className = cls;
+  if(text != null) e.textContent = text;
+  return e;
+}
+
+function fig(label){
+  const f = el("div", "fig"), value = document.createTextNode("–");
+  f.append(el("span", "", label), value);
+  return {node: f, value};
+}
+
+function makeCard(d){
+  const card = el("div", "card"), top = el("div", "top");
+  const c = {card, dot: el("span", "dot"), name: el("span", "name"), when: el("span", "when"),
+    state: el("span", "state"), big: el("div", "big", "–"), set: fig("Set"), hours: fig("Heating"),
+    err: el("div", "err"), chart: document.createElementNS("http://www.w3.org/2000/svg", "svg"),
+    tip: el("div", "tip"), dps: el("div", "dps")};
+  top.append(c.dot, c.name, c.when);
+  const figures = el("div", "figures");
+  figures.append(c.big, c.set.node, c.hours.node, c.state);
+  const raw = el("details");
+  raw.append(el("summary", "", "Raw data points"), c.dps);
+  c.chart.setAttribute("class", "chart");
+  c.chart.setAttribute("tabindex", "0");
+  c.chart.setAttribute("role", "img");
+  c.tip.hidden = true;
+  card.append(top, figures, c.err, c.chart, c.tip, raw);
+  bindHover(c);
+  cards.set(d.id, c);
+  $("devices").append(card);
+  return c;
+}
+
+function renderDevice(d){
+  const c = cards.get(d.id) || makeCard(d);
+  const r = d.latest, ok = r && !r.err, st = d.state;
+  c.dot.className = "dot " + (r ? (ok ? "live" : "down") : "");
+  c.name.textContent = d.name || d.id;
+  c.when.textContent = d.ip + (r ? " · " + new Date(r.t).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) : " · waiting for the first poll");
+  c.err.hidden = !(r && r.err);
+  c.err.textContent = r && r.err || "";
+  c.big.textContent = fmt(st && st.temp);
+  c.set.value.data = fmt(st && st.set);
+  const label = !st ? "Unavailable" : st.off ? "Off" : st.heating ? "Heating" : "Idle";
+  c.state.className = "state" + (st && st.heating ? " on" : "");
+  c.state.replaceChildren(el("i"), label);
+  c.dps.replaceChildren(...Object.entries(ok ? r.dps : {}).map(([k, v]) => {
+    const dp = el("div", "dp");
+    dp.append(el("span", "", "DP " + k), String(v));
+    return dp;
+  }));
+}
+
+// One shared Y scale, so the rooms can be compared at a glance.
+function yScale(all){
+  const values = all.flatMap(s => s.points.flatMap(p => p.set == null ? [p.temp] : [p.temp, p.set]));
+  if(!values.length) return null;
+  let lo = Math.floor(Math.min(...values) - .5), hi = Math.ceil(Math.max(...values) + .5);
+  if(hi - lo < 4){ const mid = (hi + lo) / 2; lo = Math.floor(mid - 2); hi = lo + 4; }
+  const step = [1, 2, 5, 10].find(s => (hi - lo) / s <= 4) || 20;
+  return {lo: Math.floor(lo / step) * step, hi: Math.ceil(hi / step) * step, step};
+}
+
+function xTicks(from, to){
+  const day = 864e5, span = to - from, ticks = [];
+  const every = span <= day ? 6 * 36e5 : span <= 8 * day ? day : 7 * day;
+  const t = new Date(from);
+  t.setHours(span <= day ? t.getHours() - t.getHours() % 6 : 0, 0, 0, 0);
+  for(let at = t.getTime(); at <= to; ){
+    if(at >= from) ticks.push(at);
+    const next = new Date(at);
+    if(every < day) next.setHours(next.getHours() + 6);
+    else next.setDate(next.getDate() + every / day);
+    at = next.getTime();
+  }
+  return ticks.map(at => ({at, label: new Date(at).toLocaleString([], span <= day
+    ? {hour:"2-digit",minute:"2-digit"} : {day:"numeric",month:"short"})}));
+}
+
+// Connected runs of points: a missing bucket breaks the line instead of bridging an outage.
+function runs(points, step, value){
+  const out = [];
+  let run = null, last = 0;
+  for(const p of points){
+    const v = value(p);
+    if(v == null){ run = null; continue; }
+    if(!run || p.t - last > step * 1.5){ run = []; out.push(run); }
+    run.push([p, v]);
+    last = p.t;
+  }
+  return out;
+}
+
+function drawChart(c, line, scale){
+  const svg = c.chart, w = Math.max(svg.clientWidth || 300, 240), C = CHART;
+  const plot = C.height - C.axis - C.strip - C.stripGap, stripY = C.top + plot + C.stripGap - C.top;
+  const x = t => C.left + (t - history.from) / (history.to - history.from) * (w - C.left - C.right);
+  const y = v => C.top + (scale.hi - v) / (scale.hi - scale.lo) * (plot - C.top);
+  const stepW = x(history.from + history.step) - x(history.from);
+  let s = "";
+  for(let v = scale.lo; v <= scale.hi; v += scale.step){
+    s += `<line x1="${C.left}" x2="${w - C.right}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/>`;
+    s += `<text x="${C.left - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`;
+  }
+  xTicks(history.from, history.to).forEach((t, i, all) => {
+    if(all.length > 7 && i % 2) return;
+    s += `<text x="${x(t.at)}" y="${C.height - 5}" text-anchor="middle">${t.label}</text>`;
+  });
+  s += `<rect x="${C.left}" y="${stripY}" width="${w - C.left - C.right}" height="${C.strip}" rx="2" fill="var(--line)"/>`;
+  for(const p of line.points) if(p.heat > 0){
+    s += `<rect x="${x(p.t)}" y="${stripY}" width="${Math.max(stepW, 1)}" height="${C.strip}" fill="var(--heat)" opacity="${(.35 + .65 * p.heat).toFixed(2)}"/>`;
+  }
+  for(const run of runs(line.points, history.step, p => p.set)){
+    let d = "";
+    run.forEach(([p, v], i) => d += i ? `H${x(p.t)}V${y(v)}` : `M${x(p.t)} ${y(v)}`);
+    s += `<path d="${d}" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="4 4"/>`;
+  }
+  for(const run of runs(line.points, history.step, p => p.temp)){
+    if(run.length === 1){
+      s += `<circle cx="${x(run[0][0].t)}" cy="${y(run[0][1])}" r="4" fill="var(--temp)"/>`;
+      continue;
+    }
+    const d = run.map(([p, v], i) => (i ? "L" : "M") + x(p.t) + " " + y(v)).join("");
+    s += `<path d="${d}" fill="none" stroke="var(--temp)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+  }
+  s += `<line class="cross" y1="${C.top}" y2="${stripY + C.strip}" stroke="var(--muted)" visibility="hidden"/>`;
+  svg.setAttribute("viewBox", `0 0 ${w} ${C.height}`);
+  svg.setAttribute("height", C.height);
+  svg.innerHTML = s;
+  const last = line.points[line.points.length - 1];
+  svg.setAttribute("aria-label", last
+    ? `Temperature history, latest ${last.temp.toFixed(1)} degrees, ${line.heat_hours.toFixed(1)} hours of heating`
+    : "No history yet");
+  c.view = {line, x, w};
+  c.hover = null;
+  c.tip.hidden = true;
+}
+
+function showPoint(c, index){
+  const {line, x} = c.view, p = line.points[index];
+  if(!p) return;
+  c.hover = index;
+  const px = x(p.t), cross = c.chart.querySelector(".cross");
+  cross.setAttribute("x1", px);
+  cross.setAttribute("x2", px);
+  cross.setAttribute("visibility", "visible");
+  const when = new Date(p.t).toLocaleString([], {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
+  const rows = [el("div", "", when), el("b", "", fmt(p.temp) + " room"), el("div", "", "Set " + fmt(p.set)),
+    el("div", "", "Heating " + Math.round(p.heat * 100) + "% of the time")];
+  c.tip.replaceChildren(...rows);
+  c.tip.hidden = false;
+  const box = c.chart.getBoundingClientRect(), card = c.card.getBoundingClientRect();
+  const scale = box.width / c.view.w, left = box.left - card.left + px * scale;
+  const width = c.tip.offsetWidth;
+  c.tip.style.left = Math.max(6, left + 12 + width > card.width ? left - width - 12 : left + 12) + "px";
+  c.tip.style.top = box.top - card.top + 8 + "px";
+}
+
+function hideTip(c){
+  c.tip.hidden = true;
+  c.hover = null;
+  const cross = c.chart.querySelector(".cross");
+  if(cross) cross.setAttribute("visibility", "hidden");
+}
+
+function bindHover(c){
+  c.chart.addEventListener("pointermove", e => {
+    if(!c.view || !c.view.line.points.length) return;
+    const box = c.chart.getBoundingClientRect(), px = (e.clientX - box.left) * c.view.w / box.width;
+    let best = 0, gap = Infinity;
+    c.view.line.points.forEach((p, i) => {
+      const d = Math.abs(c.view.x(p.t) - px);
+      if(d < gap){ gap = d; best = i; }
+    });
+    showPoint(c, best);
+  });
+  c.chart.addEventListener("pointerleave", () => hideTip(c));
+  c.chart.addEventListener("blur", () => hideTip(c));
+  c.chart.addEventListener("keydown", e => {
+    if(!c.view) return;
+    const end = c.view.line.points.length - 1;
+    if(e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const at = c.hover == null ? end : c.hover + (e.key === "ArrowLeft" ? -1 : 1);
+    showPoint(c, Math.min(end, Math.max(0, at)));
+  });
+}
+
+function drawCharts(){
+  if(!history) return;
+  const scale = yScale(history.series) || {lo:20, hi:30, step:5};
+  for(const line of history.series){
+    const c = cards.get(line.id);
+    if(!c) continue;
+    c.hours.value.data = line.heat_hours.toFixed(1) + " h";
+    c.hours.node.firstChild.textContent = "Heating, " + RANGES.find(r => r[0] === range)[1];
+    drawChart(c, line, scale);
+  }
+}
+
+async function loadHistory(){
+  const asked = range;
+  const res = await fetch("api/series?range=" + asked);
+  if(!res.ok || asked !== range) return;
+  history = await res.json();
+  drawCharts();
+}
 
 function addRow(d = {}){
-  const row = document.createElement("div");
-  row.className = "fields";
+  const row = el("div", "fields");
   for(const [field, label] of FIELDS){
-    const input = document.createElement("input");
+    const input = el("input");
     input.dataset.field = field;
     input.placeholder = label;
     input.setAttribute("aria-label", label);
@@ -91,9 +339,8 @@ function addRow(d = {}){
     input.value = d[field] || "";
     row.append(input);
   }
-  const remove = document.createElement("button");
+  const remove = el("button", "", "Remove");
   remove.type = "button";
-  remove.textContent = "Remove";
   remove.onclick = () => { editing = true; row.remove(); };
   row.append(remove);
   $("rows").append(row);
@@ -107,61 +354,17 @@ function setMessage(text, bad){
   $("msg").className = bad ? "bad" : "";
 }
 
-function renderDevice(d){
-  const card = document.createElement("div");
-  card.className = "card";
-  const r = d.latest;
-  const ok = r && !r.err;
-  const top = document.createElement("div");
-  top.className = "top";
-  const dot = document.createElement("span");
-  dot.className = "dot " + (r ? (ok ? "live" : "down") : "");
-  const name = document.createElement("span");
-  name.className = "name";
-  name.textContent = d.name || d.id;
-  const when = document.createElement("span");
-  when.className = "when";
-  when.textContent = d.ip + (r ? " · " + new Date(r.t).toLocaleTimeString() : " · waiting for the first poll");
-  top.append(dot, name, when);
-  card.append(top);
-  if(r && r.err){
-    const err = document.createElement("div");
-    err.className = "err";
-    err.textContent = r.err;
-    card.append(err);
-  }
-  if(ok){
-    const dps = document.createElement("div");
-    dps.className = "dps";
-    for(const [k, v] of Object.entries(r.dps)){
-      const dp = document.createElement("div");
-      dp.className = "dp";
-      const label = document.createElement("span");
-      label.textContent = "DP " + k;
-      dp.append(label, String(v));
-      dps.append(dp);
-    }
-    card.append(dps);
-  }
-  return card;
-}
-
 async function refresh(first){
   try{
     const res = await fetch("api/status");
     if(!res.ok) throw new Error(res.status);
     const list = await res.json();
-    const box = $("devices");
-    box.replaceChildren(...list.map(renderDevice));
-    if(!list.length){
-      const empty = document.createElement("p");
-      empty.className = "empty";
-      empty.textContent = "No devices yet. Add them below.";
-      box.append(empty);
-    }
+    for(const [id, c] of cards) if(!list.some(d => d.id === id)){ c.card.remove(); cards.delete(id); }
+    list.forEach(renderDevice);
     const up = list.filter(d => d.latest && !d.latest.err).length;
     $("summary").textContent = list.length ? `${up} of ${list.length} responding` : "No devices";
     $("dot").className = "dot " + (list.length && up === list.length ? "live" : list.length ? "down" : "");
+    if(!list.length) $("setup").open = true;
     if(first || !editing){
       $("rows").replaceChildren();
       list.forEach(addRow);
@@ -172,6 +375,19 @@ async function refresh(first){
     $("summary").textContent = "Cannot reach the app";
     $("dot").className = "dot down";
   }
+}
+
+for(const [id, label] of RANGES){
+  const b = el("button", "", label);
+  b.type = "button";
+  b.setAttribute("aria-pressed", id === range);
+  b.onclick = () => {
+    range = id;
+    try{ localStorage.range = id; }catch{}
+    for(const other of $("range").children) other.setAttribute("aria-pressed", other === b);
+    loadHistory();
+  };
+  $("range").append(b);
 }
 
 $("rows").addEventListener("input", () => { editing = true; });
@@ -189,11 +405,10 @@ $("import").onclick = () => {
   editing = true;
   const current = rows().filter(r => r.id);
   $("rows").replaceChildren();
-  const merged = list.map(({id, name, ip, key}) => {
+  list.map(({id, name, ip, key}) => {
     const had = current.find(r => r.id === id) || {};
     return {id, name: name || had.name, ip: ip || had.ip, key};
-  });
-  merged.forEach(addRow);
+  }).forEach(addRow);
   $("paste").value = "";
   setMessage("Check the IP addresses, then save");
 };
@@ -211,10 +426,13 @@ $("save").onclick = async () => {
   editing = false;
   setMessage("Saved. Polling now…");
   await refresh(true);
+  await loadHistory();
 };
 
-refresh(true);
+new ResizeObserver(drawCharts).observe($("devices"));
+refresh(true).then(loadHistory);
 setInterval(refresh, 5000);
+setInterval(loadHistory, 60000);
 </script>
 </body>
 </html>

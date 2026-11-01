@@ -128,7 +128,8 @@ the VM's `dockerd`/`containerd` processes, Docker Desktop's containers. There ar
 ## Floor Heating
 
 Tuya Wi-Fi thermostats don't keep the history of room temperature or heating. This app polls them over the LAN
-once a minute and records what they report.
+once a minute, records what they report and charts it over 24 hours, 7 days or 30 days: room temperature,
+set temperature, when the heating was on, and how many hours it ran.
 
 - **Read-only:** the only command in the code is the status query (`DP_QUERY`), so the app cannot change a thermostat.
 - **Protocol:** Tuya local protocol 3.3 on TCP 6668. Other versions aren't supported yet.
@@ -157,6 +158,20 @@ Each line is one poll of one device. Failed polls are kept with `err`, so an out
 ```
 
 Data point numbers and scales differ between models, so the history stores them as the device reports them.
+`/api/series?range=24h|7d|30d` returns averaged buckets for the charts. Heating time counts polls that found the heating on,
+so it's accurate to one poll interval.
+
+### Supported thermostat
+
+The charts read these data points of the `SS210RH_WH_WF` thermostat (see the constants in `series.go`). Other models may need
+different numbers.
+
+| DP | Meaning | Reading |
+|---|---|---|
+| 1 | Power | `true` / `false` |
+| 3 | Work state (not in the vendor's spec) | `heating`, or `warming` while idle |
+| 16 | Set temperature | tenths of °C |
+| 24 | Room temperature | tenths of °C |
 
 Settings (env in `docker-compose.yml`): `POLL_INTERVAL` (default `60s`, at least `30s`), `DATA_DIR` (`/data`), `LISTEN` (`:8080`).
 

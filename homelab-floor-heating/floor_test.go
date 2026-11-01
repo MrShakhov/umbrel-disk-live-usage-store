@@ -153,7 +153,7 @@ func TestDevicesAPINeverReturnsKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mux := newMux(s, make(chan struct{}, 1))
+	mux := newMux(s, make(chan struct{}, 1), time.Minute)
 
 	body := `[{"id":"` + testID + `","name":"Bath","ip":"192.0.2.10","key":"` + testKey + `"}]`
 	if rec := put(mux, body, "text/plain"); rec.Code != http.StatusUnsupportedMediaType {
@@ -204,7 +204,7 @@ func TestRecordKeepsFailedPollsInHistory(t *testing.T) {
 	if err := s.record(reading{T: now.Add(time.Minute), ID: testID, Err: "timeout"}); err != nil {
 		t.Fatal(err)
 	}
-	mux := newMux(s, make(chan struct{}, 1))
+	mux := newMux(s, make(chan struct{}, 1), time.Minute)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/api/history/2026-11-01", nil))
 	lines := strings.Split(strings.TrimSpace(rec.Body.String()), "\n")
@@ -215,5 +215,90 @@ func TestRecordKeepsFailedPollsInHistory(t *testing.T) {
 	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/api/history/..%2Fdevices", nil))
 	if rec.Code != http.StatusBadRequest && rec.Code != http.StatusNotFound {
 		t.Fatalf("path traversal: %d", rec.Code)
+	}
+}
+
+func TestDecodeReadsThermostatState(t *testing.T) {
+	st := decode(map[string]any{"1": true, "3": "heating", "16": float64(235), "24": float64(222)})
+	if !st.Heating || st.Off || *st.Temp != 22.2 || *st.Set != 23.5 {
+		t.Fatalf("heating: %+v", st)
+	}
+	if st := decode(map[string]any{"1": true, "3": "warming"}); st.Heating {
+		t.Fatal("warming must not count as heating")
+	}
+	if st := decode(map[string]any{"1": false, "3": "heating"}); st.Heating || !st.Off {
+		t.Fatalf("off: %+v", st)
+	}
+}
+
+func TestSeriesFoldsPollsAcrossDays(t *testing.T) {
+	s, err := openStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.save([]device{{ID: testID, Name: "Bath", IP: "192.0.2.10", Key: testKey}}); err != nil {
+		t.Fatal(err)
+	}
+	poll := func(at time.Time, temp float64, work string) {
+		t.Helper()
+		r := reading{T: at, ID: testID, DPS: map[string]any{"1": true, "3": work, "16": 240.0, "24": temp}}
+		if err := s.record(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	from := time.Date(2026, 11, 1, 23, 50, 0, 0, time.UTC)
+	poll(from.Add(-time.Minute), 100, "heating") // before the range
+	poll(from.Add(time.Minute), 200, "heating")
+	poll(from.Add(2*time.Minute), 210, "warming")
+	if err := s.record(reading{T: from.Add(12 * time.Minute), ID: testID, Err: "timeout"}); err != nil {
+		t.Fatal(err)
+	}
+	poll(from.Add(21*time.Minute), 220, "heating") // next UTC day, after a gap
+	to := from.Add(30 * time.Minute)
+
+	lines, err := s.series(from, to, 5*time.Minute, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 1 || len(lines[0].Points) != 2 {
+		t.Fatalf("lines = %+v", lines)
+	}
+	first, second := lines[0].Points[0], lines[0].Points[1]
+	if first.Temp != 20.5 || first.Heat != 0.5 || *first.Set != 24 || first.T != from.UnixMilli() {
+		t.Fatalf("first = %+v", first)
+	}
+	if second.Temp != 22 || second.Heat != 1 {
+		t.Fatalf("second = %+v", second)
+	}
+	if want := 2.0 / 60; lines[0].HeatHours != want {
+		t.Fatalf("heat hours = %v, want %v", lines[0].HeatHours, want)
+	}
+}
+
+func TestSeriesSkipsBrokenLinesAndAPIChecksRange(t *testing.T) {
+	s, err := openStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Add(-time.Minute)
+	if err := s.save([]device{{ID: testID, IP: "192.0.2.10", Key: testKey}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(s.dayPath(now.Format(time.DateOnly)), []byte("{\"t\":\"broken\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.record(reading{T: now, ID: testID, DPS: map[string]any{"24": 215.0}}); err != nil {
+		t.Fatal(err)
+	}
+	mux := newMux(s, make(chan struct{}, 1), time.Minute)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/api/series?range=24h", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"temp":21.5`) {
+		t.Fatalf("series %d: %s", rec.Code, rec.Body)
+	}
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/api/series?range=1y", nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad range: %d", rec.Code)
 	}
 }
