@@ -1,0 +1,35 @@
+manifestVersion: 1
+id: homelab-floor-heating
+name: Floor Heating
+tagline: History for Tuya Wi-Fi floor heating thermostats
+icon: https://raw.githubusercontent.com/MrShakhov/umbrel-homelab-store/main/homelab-floor-heating/web/icon.svg
+category: automation
+version: "0.1.0"
+port: 7842
+description: >-
+  Keeps the history that the vendor's mobile app does not. Polls Tuya Wi-Fi
+  thermostats over your local network once a minute and records what they report.
+
+
+  - Read-only: the app only sends status queries and cannot change a thermostat
+
+  - Works on your LAN, with no cloud account at runtime
+
+  - Readings stay in the app's data folder as one JSON Lines file per day
+
+
+  You need each thermostat's local key, its device ID and a fixed IP address. See
+  the README for how to get them.
+developer: MrShakhov
+website: https://github.com/MrShakhov/umbrel-homelab-store
+submitter: MrShakhov
+submission: https://github.com/MrShakhov/umbrel-homelab-store
+repo: https://github.com/MrShakhov/umbrel-homelab-store
+support: https://github.com/MrShakhov/umbrel-homelab-store/issues
+gallery: []
+releaseNotes: >-
+  First prototype: polling, raw history and device setup. Charts come next.
+dependencies: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""

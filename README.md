@@ -1,10 +1,11 @@
 # Homelab: a Community App Store for umbrelOS
 
-A personal store with two apps:
+A personal store with three apps:
 
 | App | What it does |
 |---|---|
 | [Disk Live Usage](#disk-live-usage) (`homelab-disk-live-usage`) | Live Usage for disks: who reads and writes to the disk |
+| [Floor Heating](#floor-heating) (`homelab-floor-heating`) | History for Tuya Wi-Fi floor heating thermostats |
 | [Kinoseed](#kinoseed) (`homelab-kinoseed`) | A qBittorrent web UI built around movies and TV series |
 
 To add the store to umbrelOS, see [Install in umbrelOS](#install-in-umbrelos).
@@ -41,8 +42,16 @@ homelab-disk-live-usage/
   docker-compose.yml              app_proxy + web service
   Dockerfile                      Go → static binary in scratch (~8–11 MB image)
   *.go, web/index.html            collector and UI (Go standard library only, no JS dependencies)
-dev/docker-compose.yml            local run without umbrelOS
-.github/workflows/docker.yml      builds the arm64+amd64 image into GHCR on a v* tag
+homelab-floor-heating/
+  umbrel-app.yml                  manifest (port 7842 on Umbrel)
+  docker-compose.yml              app_proxy + web service
+  Dockerfile                      Go → static binary in scratch
+  *.go, web/index.html            poller and UI (Go standard library only, no JS dependencies)
+  data/                           copied to the app's data folder: device list and history
+dev/docker-compose.yml            local run of Disk Live Usage without umbrelOS
+.github/workflows/docker.yml      builds the Disk Live Usage image into GHCR on a v* tag
+.github/workflows/docker-floor-heating.yml
+                                  builds the Floor Heating image on a floor-heating-v* tag
 ```
 
 The collector is light: one pass over `/proc` and cgroupfs per tick, no external commands, and the container list
@@ -116,6 +125,50 @@ the VM's `dockerd`/`containerd` processes, Docker Desktop's containers. There ar
 | `PROC_ROOT`, `SYS_ROOT` | `/proc`, `/sys` | |
 | `LISTEN` | `:8080` | |
 
+## Floor Heating
+
+Tuya Wi-Fi thermostats don't keep the history of room temperature or heating. This app polls them over the LAN
+once a minute and records what they report.
+
+- **Read-only:** the only command in the code is the status query (`DP_QUERY`), so the app cannot change a thermostat.
+- **Protocol:** Tuya local protocol 3.3 on TCP 6668. Other versions aren't supported yet.
+- **No cloud at runtime:** the Tuya cloud is needed once, to get the local keys.
+- **Limits:** the app runs on Docker's bridge network, so it can't hear the devices' UDP broadcasts. Give each thermostat a
+  fixed IP in your router's DHCP settings. Connections go one at a time and last a moment, and each device takes only a few at once.
+- A thermostat's key changes when it is paired again in the mobile app. The page then shows an error for that device.
+  Enter the new key and history continues.
+
+### Setup
+
+1. Create a project on the [Tuya IoT Platform](https://iot.tuya.com) and link your mobile app account to it.
+2. On your computer, run the wizard: `pip install tinytuya && python -m tinytuya wizard`. It writes `devices.json`.
+3. Open the app, paste that file into **Import devices.json**, check the IP addresses and save.
+
+`devices.json` holds your local keys, so don't commit it or share it. In the app, keys stay in the data folder
+(`devices.json`, mode 0600), and the API never returns them.
+
+### Data
+
+One [JSON Lines](https://jsonlines.org) file per UTC day in `data/history/`, also available from `/api/history/YYYY-MM-DD`.
+Each line is one poll of one device. Failed polls are kept with `err`, so an outage can be told from a gap:
+
+```json
+{"t":"2026-11-01T14:00:26Z","id":"bf00…","ms":41,"dps":{"1":true,"16":240,"24":219}}
+```
+
+Data point numbers and scales differ between models, so the history stores them as the device reports them.
+
+Settings (env in `docker-compose.yml`): `POLL_INTERVAL` (default `60s`, at least `30s`), `DATA_DIR` (`/data`), `LISTEN` (`:8080`).
+
+Image: `ghcr.io/mrshakhov/umbrel-floor-heating` (linux/arm64 + linux/amd64). New release: bump `version` in `umbrel-app.yml`
+and the image tag in `docker-compose.yml`, merge, then push a tag such as `floor-heating-v0.1.1`. The GHCR package must be **public**.
+
+Tests need only Docker:
+
+```bash
+docker run --rm -v "$PWD/homelab-floor-heating":/src:ro -w /src -e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false -e GOCACHE=/tmp/c golang:1.23-alpine go test ./...
+```
+
 ## Kinoseed
 
 A qBittorrent web UI built around movies and TV series: search TMDB, pick a release found by Prowlarr,
@@ -139,8 +192,8 @@ in `docker-compose.yml` (the digest is in the GitHub Release), then commit and p
 
 1. Open **App Store** → the **⋯** menu at the top right → **Community App Stores**.
 2. Paste the repository URL (`https://github.com/MrShakhov/umbrel-homelab-store`) → **Add**.
-3. Open the new **Homelab App Store** → **Disk Live Usage** or **Kinoseed** → **Install**.
-4. Disk Live Usage opens at `http://umbrel.local:7841`, Kinoseed at `http://umbrel.local:8795`.
+3. Open the new **Homelab App Store** → pick an app → **Install**.
+4. Disk Live Usage opens at `http://umbrel.local:7841`, Floor Heating at `http://umbrel.local:7842`, Kinoseed at `http://umbrel.local:8795`.
 
 After a new release (see above) Umbrel offers the update on its own.
 

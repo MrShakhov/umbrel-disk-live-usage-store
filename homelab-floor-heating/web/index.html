@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Floor Heating</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root{
+  --bg:#0d0d11; --card:rgba(255,255,255,.045); --line:rgba(255,255,255,.08);
+  --text:#f2f2f5; --muted:#8c8c99; --accent:#ff8a4c; --ok:#3ccf91; --bad:#ff5c5c;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#f3f3f6; --card:#fff; --line:rgba(0,0,0,.08);
+    --text:#16161a; --muted:#6b6b78; --accent:#e0661f;
+    color-scheme:light;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+main{max-width:860px;margin:0 auto;padding:24px 16px 40px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+h1{font-size:22px;font-weight:650;margin:0;letter-spacing:-.01em}
+h2{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:28px 0 10px}
+.status{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:13px;margin-left:auto}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+.dot.live{background:var(--ok)}
+.dot.down{background:var(--bad)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.name{font-weight:620;font-size:15px}
+.when{color:var(--muted);font-size:12px;margin-left:auto}
+.err{color:var(--bad);font-size:13px;margin-top:6px;overflow-wrap:anywhere}
+.dps{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-top:10px}
+.dp{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.dp span{display:block;font-size:12px;color:var(--muted)}
+.empty{color:var(--muted)}
+.fields{display:grid;grid-template-columns:1fr 1.4fr 1fr 1fr auto;gap:8px;margin-bottom:8px}
+@media (max-width:700px){.fields{grid-template-columns:1fr}}
+input,textarea{width:100%;font:inherit;color:inherit;background:transparent;border:1px solid var(--line);border-radius:8px;padding:7px 9px}
+textarea{height:84px;resize:vertical;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+button{font:inherit;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.note{color:var(--muted);font-size:12px;margin:8px 0 0}
+#msg{font-size:13px}
+#msg.bad{color:var(--bad)}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Floor Heating</h1>
+    <div class="status"><span class="dot" id="dot"></span><span id="summary">Loading…</span></div>
+  </header>
+
+  <h2>Thermostats</h2>
+  <div id="devices"></div>
+
+  <h2>Devices</h2>
+  <div class="card">
+    <div id="rows"></div>
+    <div class="actions">
+      <button type="button" id="add">Add device</button>
+      <button type="button" class="primary" id="save">Save</button>
+      <span id="msg"></span>
+    </div>
+    <p class="note">Leave Local key empty to keep the saved one. Keys stay in this app's data folder and are never shown again.</p>
+    <h2>Import devices.json</h2>
+    <textarea id="paste" placeholder="Paste the output of the TinyTuya wizard to fill the rows above" spellcheck="false" autocomplete="off"></textarea>
+    <div class="actions"><button type="button" id="import">Fill rows</button></div>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const FIELDS = [["name","Name"],["id","Device ID"],["ip","IP address"],["key","Local key"]];
+let editing = false;
+
+function addRow(d = {}){
+  const row = document.createElement("div");
+  row.className = "fields";
+  for(const [field, label] of FIELDS){
+    const input = document.createElement("input");
+    input.dataset.field = field;
+    input.placeholder = label;
+    input.setAttribute("aria-label", label);
+    input.autocomplete = "off";
+    if(field === "key") input.type = "password";
+    input.value = d[field] || "";
+    row.append(input);
+  }
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.textContent = "Remove";
+  remove.onclick = () => { editing = true; row.remove(); };
+  row.append(remove);
+  $("rows").append(row);
+}
+
+const rows = () => [...document.querySelectorAll("#rows .fields")].map(row =>
+  Object.fromEntries([...row.querySelectorAll("input")].map(i => [i.dataset.field, i.value.trim()])));
+
+function setMessage(text, bad){
+  $("msg").textContent = text;
+  $("msg").className = bad ? "bad" : "";
+}
+
+function renderDevice(d){
+  const card = document.createElement("div");
+  card.className = "card";
+  const r = d.latest;
+  const ok = r && !r.err;
+  const top = document.createElement("div");
+  top.className = "top";
+  const dot = document.createElement("span");
+  dot.className = "dot " + (r ? (ok ? "live" : "down") : "");
+  const name = document.createElement("span");
+  name.className = "name";
+  name.textContent = d.name || d.id;
+  const when = document.createElement("span");
+  when.className = "when";
+  when.textContent = d.ip + (r ? " · " + new Date(r.t).toLocaleTimeString() : " · waiting for the first poll");
+  top.append(dot, name, when);
+  card.append(top);
+  if(r && r.err){
+    const err = document.createElement("div");
+    err.className = "err";
+    err.textContent = r.err;
+    card.append(err);
+  }
+  if(ok){
+    const dps = document.createElement("div");
+    dps.className = "dps";
+    for(const [k, v] of Object.entries(r.dps)){
+      const dp = document.createElement("div");
+      dp.className = "dp";
+      const label = document.createElement("span");
+      label.textContent = "DP " + k;
+      dp.append(label, String(v));
+      dps.append(dp);
+    }
+    card.append(dps);
+  }
+  return card;
+}
+
+async function refresh(first){
+  try{
+    const res = await fetch("api/status");
+    if(!res.ok) throw new Error(res.status);
+    const list = await res.json();
+    const box = $("devices");
+    box.replaceChildren(...list.map(renderDevice));
+    if(!list.length){
+      const empty = document.createElement("p");
+      empty.className = "empty";
+      empty.textContent = "No devices yet. Add them below.";
+      box.append(empty);
+    }
+    const up = list.filter(d => d.latest && !d.latest.err).length;
+    $("summary").textContent = list.length ? `${up} of ${list.length} responding` : "No devices";
+    $("dot").className = "dot " + (list.length && up === list.length ? "live" : list.length ? "down" : "");
+    if(first || !editing){
+      $("rows").replaceChildren();
+      list.forEach(addRow);
+      if(!list.length) addRow();
+      editing = false;
+    }
+  }catch{
+    $("summary").textContent = "Cannot reach the app";
+    $("dot").className = "dot down";
+  }
+}
+
+$("rows").addEventListener("input", () => { editing = true; });
+$("add").onclick = () => { editing = true; addRow(); };
+
+$("import").onclick = () => {
+  let list;
+  try{
+    list = JSON.parse($("paste").value);
+    if(!Array.isArray(list)) throw 0;
+  }catch{
+    setMessage("That is not a JSON list of devices", true);
+    return;
+  }
+  editing = true;
+  const current = rows().filter(r => r.id);
+  $("rows").replaceChildren();
+  const merged = list.map(({id, name, ip, key}) => {
+    const had = current.find(r => r.id === id) || {};
+    return {id, name: name || had.name, ip: ip || had.ip, key};
+  });
+  merged.forEach(addRow);
+  $("paste").value = "";
+  setMessage("Check the IP addresses, then save");
+};
+
+$("save").onclick = async () => {
+  const res = await fetch("api/devices", {
+    method: "PUT",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(rows().filter(r => r.id || r.ip || r.key)),
+  });
+  if(!res.ok){
+    setMessage((await res.text()).trim(), true);
+    return;
+  }
+  editing = false;
+  setMessage("Saved. Polling now…");
+  await refresh(true);
+};
+
+refresh(true);
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
