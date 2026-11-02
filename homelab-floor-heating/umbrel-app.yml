@@ -4,7 +4,7 @@ name: Floor Heating
 tagline: History for Tuya Wi-Fi floor heating thermostats
 icon: https://raw.githubusercontent.com/MrShakhov/umbrel-homelab-store/main/homelab-floor-heating/web/icon.svg
 category: automation
-version: "0.2.0"
+version: "0.3.0"
 port: 7842
 description: >-
   Keeps the history that the vendor's mobile app does not. Polls Tuya Wi-Fi
@@ -20,8 +20,14 @@ description: >-
   - Readings stay in the app's data folder as one JSON Lines file per day
 
 
-  You need each thermostat's local key, its device ID and a fixed IP address. See
-  the README for how to get them.
+  You need each thermostat's local key, its device ID, its MAC address and a
+  fixed IP address. See the README for how to get them.
+
+
+  ⚠️ These thermostats can stop answering ARP requests, so a small helper container
+  pins their addresses on your Umbrel. It uses the host network and CAP_NET_ADMIN,
+  which lets it change the network settings of your Umbrel. It can't read your keys
+  or history. See the README for details.
 developer: MrShakhov
 website: https://github.com/MrShakhov/umbrel-homelab-store
 submitter: MrShakhov
@@ -30,7 +36,7 @@ repo: https://github.com/MrShakhov/umbrel-homelab-store
 support: https://github.com/MrShakhov/umbrel-homelab-store/issues
 gallery: []
 releaseNotes: >-
-  Charts of room and set temperature with heating time, over 24 hours, 7 days or 30 days.
+  Keeps thermostats reachable when they stop answering ARP requests. Add each thermostat's MAC address under Devices.
 dependencies: []
 path: ""
 defaultUsername: ""
