@@ -44,7 +44,7 @@ homelab-disk-live-usage/
   *.go, web/index.html            collector and UI (Go standard library only, no JS dependencies)
 homelab-floor-heating/
   umbrel-app.yml                  manifest (port 7842 on Umbrel)
-  docker-compose.yml              app_proxy + web service
+  docker-compose.yml              app_proxy + web service + neighbors service
   Dockerfile                      Go → static binary in scratch
   *.go, web/index.html            poller and UI (Go standard library only, no JS dependencies)
   data/                           copied to the app's data folder: device list and history
@@ -134,16 +134,33 @@ set temperature, when the heating was on, and how many hours it ran.
 - **Read-only:** the only command in the code is the status query (`DP_QUERY`), so the app cannot change a thermostat.
 - **Protocol:** Tuya local protocol 3.3 on TCP 6668. Other versions aren't supported yet.
 - **No cloud at runtime:** the Tuya cloud is needed once, to get the local keys.
-- **Limits:** the app runs on Docker's bridge network, so it can't hear the devices' UDP broadcasts. Give each thermostat a
+- **Limits:** the poller runs on Docker's bridge network, so it can't hear the devices' UDP broadcasts. Give each thermostat a
   fixed IP in your router's DHCP settings. Connections go one at a time and last a moment, and each device takes only a few at once.
 - A thermostat's key changes when it is paired again in the mobile app. The page then shows an error for that device.
   Enter the new key and history continues.
+
+### Thermostats that stop answering
+
+After a while these thermostats can stop answering ARP requests, while staying on Wi-Fi and in the mobile app. Polls then fail
+with `no route to host`, often for one thermostat and only until the router restarts. Anything that already knows the MAC
+address still reaches them, so the cause is ARP and not the network. Why the thermostats do this is unknown.
+
+So the app pins each address on the Umbrel. Enter the MAC address under **Devices**: it's in your router's list of clients.
+Leave it empty to skip pinning for that thermostat.
+
+The `neighbors` service does this every 30 s, and pins survive restarts because the service sets them again. It's the same image,
+with less access than it may look:
+
+- It needs `network_mode: host` and `NET_ADMIN`, which allow changing the Umbrel's network settings. Those are the only extras.
+- It runs as root because capabilities don't reach a non-root user, but with `DAC_OVERRIDE` dropped, so it can't open the
+  `0600` device list. It reads only `neighbors.json`, which holds IP and MAC addresses and no keys. The folder is read-only.
+- If a thermostat's IP or MAC changes, update it under **Devices**. A wrong pinned address makes that thermostat unreachable.
 
 ### Setup
 
 1. Create a project on the [Tuya IoT Platform](https://iot.tuya.com) and link your mobile app account to it.
 2. On your computer, run the wizard: `pip install tinytuya && python -m tinytuya wizard`. It writes `devices.json`.
-3. Open the app, paste that file into **Import devices.json**, check the IP addresses and save.
+3. Open the app, paste that file into **Import devices.json**, check the IP and MAC addresses and save.
 
 `devices.json` holds your local keys, so don't commit it or share it. In the app, keys stay in the data folder
 (`devices.json`, mode 0600), and the API never returns them.
@@ -173,7 +190,7 @@ different numbers.
 | 16 | Set temperature | tenths of °C |
 | 24 | Room temperature | tenths of °C |
 
-Settings (env in `docker-compose.yml`): `POLL_INTERVAL` (default `60s`, at least `30s`), `DATA_DIR` (`/data`), `LISTEN` (`:8080`).
+Settings (env of the `web` service): `POLL_INTERVAL` (default `60s`, at least `30s`), `DATA_DIR` (`/data`), `LISTEN` (`:8080`).
 
 Image: `ghcr.io/mrshakhov/umbrel-floor-heating` (linux/arm64 + linux/amd64). New release: bump `version` in `umbrel-app.yml`
 and the image tag in `docker-compose.yml`, merge, then push a tag such as `floor-heating-v0.1.1`. The GHCR package must be **public**.

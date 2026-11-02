@@ -27,6 +27,10 @@ func env(key, def string) string {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "pin-neighbors" {
+		pinNeighbors(env("DATA_DIR", "/data"))
+		return
+	}
 	interval, err := time.ParseDuration(env("POLL_INTERVAL", "60s"))
 	if err != nil || interval < 30*time.Second {
 		log.Fatalf("bad POLL_INTERVAL %q (want e.g. 60s, minimum 30s)", os.Getenv("POLL_INTERVAL"))

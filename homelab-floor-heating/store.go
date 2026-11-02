@@ -17,6 +17,7 @@ type device struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	IP   string `json:"ip"`
+	MAC  string `json:"mac,omitempty"`
 	Key  string `json:"key"`
 }
 
@@ -85,20 +86,41 @@ func (s *store) save(in []device) error {
 		if len(d.Key) != 16 {
 			return fmt.Errorf("device %s: the local key must be 16 characters", d.ID)
 		}
+		if d.MAC != "" {
+			mac, err := net.ParseMAC(d.MAC)
+			if err != nil || len(mac) != 6 {
+				return fmt.Errorf("device %s: bad MAC address %q", d.ID, d.MAC)
+			}
+			d.MAC = mac.String()
+		}
 	}
-	b, err := json.MarshalIndent(in, "", "  ")
-	if err != nil {
+	if err := writeJSON(s.devicesPath(), in, 0o600); err != nil {
 		return err
 	}
-	tmp := s.devicesPath() + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
+	pins := []neighbor{}
+	for _, d := range in {
+		if d.MAC != "" {
+			pins = append(pins, neighbor{IP: d.IP, MAC: d.MAC})
+		}
 	}
-	if err := os.Rename(tmp, s.devicesPath()); err != nil {
+	// World-readable on purpose: the pinning container can't read anything else here.
+	if err := writeJSON(filepath.Join(s.dir, neighborsFile), pins, 0o644); err != nil {
 		return err
 	}
 	s.devices = in
 	return nil
+}
+
+func writeJSON(path string, v any, mode os.FileMode) error {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, b, mode); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 // record keeps a reading as the latest and appends it to the day's JSONL file.
@@ -128,6 +150,7 @@ type deviceStatus struct {
 	ID     string   `json:"id"`
 	Name   string   `json:"name"`
 	IP     string   `json:"ip"`
+	MAC    string   `json:"mac,omitempty"`
 	Latest *reading `json:"latest,omitempty"`
 	State  *state   `json:"state,omitempty"`
 }
@@ -137,7 +160,7 @@ func (s *store) status() []deviceStatus {
 	defer s.mu.Unlock()
 	out := make([]deviceStatus, 0, len(s.devices))
 	for _, d := range s.devices {
-		st := deviceStatus{ID: d.ID, Name: d.Name, IP: d.IP}
+		st := deviceStatus{ID: d.ID, Name: d.Name, IP: d.IP, MAC: d.MAC}
 		if r, ok := s.last[d.ID]; ok {
 			st.Latest = &r
 			if r.Err == "" {

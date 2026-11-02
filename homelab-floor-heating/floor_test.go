@@ -1,12 +1,16 @@
 package main
 
 import (
+	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -300,5 +304,108 @@ func TestSeriesSkipsBrokenLinesAndAPIChecksRange(t *testing.T) {
 	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/api/series?range=1y", nil))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("bad range: %d", rec.Code)
+	}
+}
+
+func TestSavePublishesAddressesWithoutKeys(t *testing.T) {
+	s, err := openStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := []device{
+		{ID: "a", IP: "192.0.2.10", MAC: "D8-D6-68-00-00-01", Key: testKey},
+		{ID: "b", IP: "192.0.2.11", Key: testKey},
+	}
+	if err := s.save(in); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(s.dir, neighborsFile)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), testKey) {
+		t.Fatalf("key in %s", raw)
+	}
+	got, err := readNeighbors(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != (neighbor{IP: "192.0.2.10", MAC: "d8:d6:68:00:00:01"}) {
+		t.Fatalf("neighbors = %+v", got)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o644 {
+		t.Fatalf("mode = %v", info.Mode().Perm())
+	}
+	if err := s.save([]device{{ID: "a", IP: "192.0.2.10", MAC: "nonsense", Key: testKey}}); err == nil {
+		t.Fatal("want an error for a bad MAC")
+	}
+	if got, err := readNeighbors(filepath.Join(t.TempDir(), "missing")); err != nil || got != nil {
+		t.Fatalf("missing file: %v, %v", got, err)
+	}
+}
+
+func TestSyncNeighbors(t *testing.T) {
+	var set []string
+	var del []string
+	apply := func(n neighbor) error {
+		if n.IP == "192.0.2.99" {
+			return errors.New("no interface")
+		}
+		set = append(set, n.IP)
+		return nil
+	}
+	remove := func(ip string) error { del = append(del, ip); return nil }
+	pinned := map[string]string{}
+
+	syncNeighbors([]neighbor{{"192.0.2.1", "aa"}, {"192.0.2.99", "bb"}}, pinned, apply, remove)
+	if len(pinned) != 1 || pinned["192.0.2.1"] != "aa" {
+		t.Fatalf("pinned = %v", pinned)
+	}
+	// Set again every round, in case the kernel dropped the entry.
+	syncNeighbors([]neighbor{{"192.0.2.1", "aa"}}, pinned, apply, remove)
+	if len(set) != 2 || len(del) != 0 {
+		t.Fatalf("set = %v, del = %v", set, del)
+	}
+	syncNeighbors(nil, pinned, apply, remove)
+	if len(del) != 1 || del[0] != "192.0.2.1" || len(pinned) != 0 {
+		t.Fatalf("del = %v, pinned = %v", del, pinned)
+	}
+}
+
+func TestEncodeNeighbor(t *testing.T) {
+	ip := net.ParseIP("192.0.2.10").To4()
+	mac, _ := net.ParseMAC("d8:d6:68:00:00:01")
+	b := encodeNeighbor(rtmNewNeigh, 0, 7, ip, mac)
+	if int(binary.LittleEndian.Uint32(b)) != len(b) || len(b)%4 != 0 {
+		t.Fatalf("length %d in a %d byte message", binary.LittleEndian.Uint32(b), len(b))
+	}
+	if binary.LittleEndian.Uint32(b[20:]) != 7 || binary.LittleEndian.Uint16(b[24:]) != nudPermanent {
+		t.Fatalf("ndmsg = % x", b[16:28])
+	}
+	if !strings.Contains(string(b), string(ip)) || !strings.Contains(string(b), string(mac)) {
+		t.Fatalf("addresses missing: % x", b)
+	}
+}
+
+func TestNetlinkAck(t *testing.T) {
+	reply := func(kind uint16, code int32) []byte {
+		b := make([]byte, 20)
+		binary.LittleEndian.PutUint16(b[4:], kind)
+		binary.LittleEndian.PutUint32(b[16:], uint32(code))
+		return b
+	}
+	if err := netlinkAck(reply(syscall.NLMSG_ERROR, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := netlinkAck(reply(syscall.NLMSG_ERROR, -1)); err != syscall.EPERM {
+		t.Fatalf("err = %v", err)
+	}
+	if err := netlinkAck(reply(16, 0)); err == nil {
+		t.Fatal("want an error for another message type")
 	}
 }
