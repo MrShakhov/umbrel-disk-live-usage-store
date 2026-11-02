@@ -138,6 +138,8 @@ set temperature, when the heating was on, and how many hours it ran.
   fixed IP in your router's DHCP settings. Connections go one at a time and last a moment, and each device takes only a few at once.
 - A thermostat's key changes when it is paired again in the mobile app. The page then shows an error for that device.
   Enter the new key and history continues.
+- **Poll status:** a ring in the page header fills up towards the next poll, next to a countdown. It turns red and stops,
+  with the word **Stalled**, when the collector misses its schedule or the page can't reach the app.
 
 ### Thermostats that stop answering
 
@@ -172,6 +174,14 @@ Each line is one poll of one device. Failed polls are kept with `err`, so an out
 
 ```json
 {"t":"2026-11-01T14:00:26Z","id":"bf00…","ms":41,"dps":{"1":true,"16":240,"24":219}}
+```
+
+`/api/status` returns the latest state of each device, without keys, and what the collector is doing. Since 0.4.0 it's an object
+rather than a bare list. `state` is `polling`, `waiting` or `stalled`. Times are milliseconds from the moment of the response,
+so the browser's clock doesn't matter, and `next_in_ms` goes negative once a poll is overdue:
+
+```json
+{"poll":{"state":"waiting","next_in_ms":42000,"last_ago_ms":18000},"devices":[{"id":"bf00…","name":"Bath","ip":"192.0.2.10"}]}
 ```
 
 Data point numbers and scales differ between models, so the history stores them as the device reports them.
