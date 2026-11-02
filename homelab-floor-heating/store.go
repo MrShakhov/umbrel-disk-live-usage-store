@@ -36,6 +36,11 @@ type store struct {
 	mu      sync.Mutex
 	devices []device
 	last    map[string]reading
+
+	polling  bool
+	lastPoll time.Time // when the last round finished
+	nextPoll time.Time // when the next round is due
+	stallAt  time.Time // the collector is stuck if it hasn't moved on by then
 }
 
 func openStore(dir string) (*store, error) {
@@ -171,4 +176,47 @@ func (s *store) status() []deviceStatus {
 		out = append(out, st)
 	}
 	return out
+}
+
+func (s *store) roundStarted(now time.Time, devices int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.polling = true
+	// A device can use the timeout twice: to connect, and then to answer.
+	s.stallAt = now.Add(time.Duration(devices)*2*queryTimeout + stallMargin)
+}
+
+func (s *store) roundFinished(now, next time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.polling = false
+	s.lastPoll, s.nextPoll = now, next
+	s.stallAt = next.Add(stallMargin)
+}
+
+// pollStatus says what the collector is doing. It holds durations, not times, so
+// the page doesn't depend on the browser's clock or on a Pi setting its own late.
+type pollStatus struct {
+	State     string `json:"state"`       // polling, waiting or stalled
+	NextInMS  int64  `json:"next_in_ms"`  // negative once overdue, 0 before the first round ends
+	LastAgoMS int64  `json:"last_ago_ms"` // since the last round finished, 0 before the first
+}
+
+func (s *store) pollStatus(now time.Time) pollStatus {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := pollStatus{State: "waiting"}
+	if !s.nextPoll.IsZero() {
+		st.NextInMS = s.nextPoll.Sub(now).Milliseconds()
+		st.LastAgoMS = now.Sub(s.lastPoll).Milliseconds()
+	}
+	switch {
+	case s.stallAt.IsZero(): // the first round is about to start
+		st.State = "polling"
+	case now.After(s.stallAt):
+		st.State = "stalled"
+	case s.polling:
+		st.State = "polling"
+	}
+	return st
 }

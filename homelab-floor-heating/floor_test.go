@@ -222,6 +222,138 @@ func TestRecordKeepsFailedPollsInHistory(t *testing.T) {
 	}
 }
 
+func TestPollStatusFollowsTheCollector(t *testing.T) {
+	s, err := openStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	if st := s.pollStatus(now); st.State != "polling" {
+		t.Fatalf("before the first round: %+v", st)
+	}
+	s.roundStarted(now, 3)
+	if st := s.pollStatus(now.Add(time.Second)); st.State != "polling" || st.NextInMS != 0 || st.LastAgoMS != 0 {
+		t.Fatalf("first round: %+v", st)
+	}
+	// Three devices that all time out twice are slow, not stuck.
+	worst := 6*queryTimeout + stallMargin
+	if st := s.pollStatus(now.Add(worst)); st.State != "polling" {
+		t.Fatalf("slow round: %+v", st)
+	}
+	if st := s.pollStatus(now.Add(worst + time.Second)); st.State != "stalled" {
+		t.Fatalf("stuck round: %+v", st)
+	}
+
+	done, next := now.Add(2*time.Second), now.Add(time.Minute)
+	s.roundFinished(done, next)
+	if st := s.pollStatus(done.Add(18 * time.Second)); st != (pollStatus{"waiting", 40_000, 18_000}) {
+		t.Fatalf("waiting: %+v", st)
+	}
+	if st := s.pollStatus(next.Add(stallMargin)); st.State != "waiting" || st.NextInMS != -stallMargin.Milliseconds() {
+		t.Fatalf("late, within the margin: %+v", st)
+	}
+	if st := s.pollStatus(next.Add(stallMargin + time.Second)); st.State != "stalled" || st.NextInMS != -16_000 {
+		t.Fatalf("missed the schedule: %+v", st)
+	}
+}
+
+func TestStatusAPIReportsPollAndDevices(t *testing.T) {
+	s, err := openStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.save([]device{{ID: testID, Name: "Bath", IP: "192.0.2.10", Key: testKey}}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	s.roundFinished(now, now.Add(time.Minute))
+	rec := httptest.NewRecorder()
+	newMux(s, make(chan struct{}, 1), time.Minute).ServeHTTP(rec, httptest.NewRequest("GET", "/api/status", nil))
+	var got struct {
+		Poll    pollStatus     `json:"poll"`
+		Devices []deviceStatus `json:"devices"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("status %s: %v", rec.Body, err)
+	}
+	if got.Poll.State != "waiting" || got.Poll.NextInMS <= 0 || got.Poll.NextInMS > 60_000 {
+		t.Fatalf("poll = %+v", got.Poll)
+	}
+	if len(got.Devices) != 1 || got.Devices[0].Name != "Bath" {
+		t.Fatalf("devices = %+v", got.Devices)
+	}
+	if strings.Contains(rec.Body.String(), testKey) {
+		t.Fatalf("key in %s", rec.Body)
+	}
+}
+
+func TestNextRoundKeepsTheSchedule(t *testing.T) {
+	due := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	for _, c := range []struct {
+		after time.Duration
+		want  time.Duration
+	}{
+		{-20 * time.Second, 0},               // a kicked round ending before the due time
+		{time.Second, time.Minute},           // a normal round
+		{time.Minute, 2 * time.Minute},       // ending right on the next due time
+		{150 * time.Second, 3 * time.Minute}, // a round that ran past a due time
+	} {
+		if got := nextRound(due, due.Add(c.after), time.Minute); !got.Equal(due.Add(c.want)) {
+			t.Errorf("%v after the due time: next %v", c.after, got.Sub(due))
+		}
+	}
+}
+
+// roundAfter waits until the collector has finished a round later than last.
+func roundAfter(t *testing.T, s *store, last time.Time) (finished, next time.Time) {
+	t.Helper()
+	for end := time.Now().Add(5 * time.Second); time.Now().Before(end); time.Sleep(time.Millisecond) {
+		s.mu.Lock()
+		finished, next = s.lastPoll, s.nextPoll
+		s.mu.Unlock()
+		if finished.After(last) {
+			return finished, next
+		}
+	}
+	t.Fatal("no round finished")
+	return
+}
+
+func TestKickPollsWithoutMovingTheSchedule(t *testing.T) {
+	s, err := openStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	kick := make(chan struct{}, 1)
+	go run(s, time.Hour, kick)
+	first, due := roundAfter(t, s, time.Time{})
+	if got := due.Sub(first); got <= 59*time.Minute || got > time.Hour {
+		t.Fatalf("next poll in %v", got)
+	}
+	kick <- struct{}{}
+	second, after := roundAfter(t, s, first)
+	if !after.Equal(due) {
+		t.Fatalf("kick moved the next poll by %v", after.Sub(due))
+	}
+	if st := s.pollStatus(second); st.State != "waiting" || st.NextInMS < 59*60_000 {
+		t.Fatalf("after a kick: %+v", st)
+	}
+}
+
+func TestRunPublishesEachDueTime(t *testing.T) {
+	s, err := openStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	const interval = 20 * time.Millisecond
+	go run(s, interval, make(chan struct{}))
+	finished, due := roundAfter(t, s, time.Time{})
+	_, next := roundAfter(t, s, finished)
+	if gap := next.Sub(due); gap <= 0 || gap%interval != 0 {
+		t.Fatalf("schedule moved by %v", gap)
+	}
+}
+
 func TestDecodeReadsThermostatState(t *testing.T) {
 	st := decode(map[string]any{"1": true, "3": "heating", "16": float64(235), "24": float64(222)})
 	if !st.Heating || st.Off || *st.Temp != 22.2 || *st.Set != 23.5 {

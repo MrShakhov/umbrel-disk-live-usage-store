@@ -26,7 +26,24 @@ main{max-width:860px;margin:0 auto;padding:24px 16px 40px}
 header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
 h1{font-size:22px;font-weight:650;margin:0;letter-spacing:-.01em}
 h2{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:20px 0 10px}
-.status{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:13px;margin-left:auto}
+.status{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:4px 14px;color:var(--muted);font-size:13px;margin-left:auto}
+.summary{display:flex;align-items:center;gap:7px}
+.poll{display:flex;align-items:center;gap:7px;font-variant-numeric:tabular-nums}
+.poll[hidden]{display:none}
+.poll svg{width:14px;height:14px;flex:none;transform:rotate(-90deg)}
+.poll circle{fill:none;stroke:var(--line);stroke-width:3}
+.poll .fill{stroke:var(--ok);stroke-dasharray:1;stroke-dashoffset:1}
+.poll.waiting .fill{transition:stroke-dashoffset .25s linear}
+.poll.polling .fill{stroke:var(--accent)}
+.poll.polling svg{animation:spin 1s linear infinite}
+.poll.stalled{color:var(--bad)}
+.poll.stalled .fill{stroke:var(--bad)}
+#pollText{min-width:7.8em}
+@keyframes spin{to{transform:rotate(270deg)}}
+@media (prefers-reduced-motion: reduce){
+  .poll.waiting .fill{transition:none}
+  .poll.polling svg{animation:none}
+}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
 .dot.live{background:var(--ok)}
 .dot.down{background:var(--bad)}
@@ -77,7 +94,13 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff;fo
 <main>
   <header>
     <h1>Floor Heating</h1>
-    <div class="status"><span class="dot" id="dot"></span><span id="summary">Loading…</span></div>
+    <div class="status">
+      <div class="poll" id="poll" hidden>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><circle class="fill" id="pollRing" cx="8" cy="8" r="6" pathLength="1"/></svg>
+        <span id="pollText" role="timer"></span>
+      </div>
+      <div class="summary"><span class="dot" id="dot"></span><span id="summary">Loading…</span></div>
+    </div>
   </header>
 
   <div class="bar">
@@ -110,13 +133,17 @@ const $ = id => document.getElementById(id);
 const FIELDS = [["name","Name"],["id","Device ID"],["ip","IP address"],["mac","MAC address"],["key","Local key"]];
 const RANGES = [["24h","24 hours"],["7d","7 days"],["30d","30 days"]];
 const CHART = {height:190, left:30, right:6, top:8, stripGap:8, strip:8, axis:20};
+const REFRESH = 5000;
+const calm = matchMedia("(prefers-reduced-motion: reduce)");
 let range = "24h";
 try{ range = RANGES.some(r => r[0] === localStorage.range) ? localStorage.range : range; }catch{}
 let editing = false;
 let history = null;
+let poll = null, pollAt = 0, refreshTimer = 0;
 const cards = new Map();
 
 const fmt = v => v == null ? "–" : v.toFixed(1) + " °C";
+const overdue = ms => ms < 60000 ? Math.round(ms / 1000) + " s" : Math.round(ms / 60000) + " min";
 
 function el(tag, cls, text){
   const e = document.createElement(tag);
@@ -355,11 +382,46 @@ function setMessage(text, bad){
   $("msg").className = bad ? "bad" : "";
 }
 
+// Animates what the server last reported, counted on this page's own timer so
+// the clocks of the browser and the Umbrel never meet.
+function renderPoll(){
+  if(!poll) return;
+  const passed = performance.now() - pollAt, left = poll.next_in_ms - passed;
+  // Once due, the round counts as running until the refresh that follows says otherwise.
+  const state = poll.state === "waiting" && left <= 0 ? "polling" : poll.state;
+  let done = 1, text = "Stalled";
+  if(state === "polling"){
+    done = .25;
+    text = "Polling now…";
+  }else if(state === "waiting"){
+    const since = poll.last_ago_ms + passed, part = since / (since + left);
+    done = calm.matches ? Math.floor(part * 12) / 12 : part;
+    text = `Next poll in ${Math.ceil(left / 1000)} s`;
+  }else if(poll.offline){
+    text = "Stalled, no connection";
+  }else if(poll.next_in_ms < 0){
+    text = `Stalled, ${overdue(-left)} overdue`;
+  }
+  $("poll").className = "poll " + state;
+  $("pollRing").style.strokeDashoffset = 1 - done;
+  if($("pollText").textContent !== text) $("pollText").textContent = text;
+}
+
+// Looks again as soon as something should change: at the due time, and until the round ends.
+function refreshDelay(){
+  if(poll.state === "polling") return 1000;
+  if(poll.state === "waiting") return Math.min(REFRESH, Math.max(poll.next_in_ms, 0) + 300);
+  return REFRESH;
+}
+
 async function refresh(first){
   try{
-    const res = await fetch("api/status");
+    const res = await fetch("api/status", {signal: AbortSignal.timeout(REFRESH)});
     if(!res.ok) throw new Error(res.status);
-    const list = await res.json();
+    const {poll: reported, devices: list} = await res.json();
+    poll = reported;
+    pollAt = performance.now();
+    $("poll").hidden = !list.length;
     for(const [id, c] of cards) if(!list.some(d => d.id === id)){ c.card.remove(); cards.delete(id); }
     list.forEach(renderDevice);
     const up = list.filter(d => d.latest && !d.latest.err).length;
@@ -373,9 +435,14 @@ async function refresh(first){
       editing = false;
     }
   }catch{
+    poll = {state: "stalled", offline: true};
+    $("poll").hidden = false;
     $("summary").textContent = "Cannot reach the app";
     $("dot").className = "dot down";
   }
+  renderPoll();
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(refresh, refreshDelay());
 }
 
 for(const [id, label] of RANGES){
@@ -431,8 +498,9 @@ $("save").onclick = async () => {
 };
 
 new ResizeObserver(drawCharts).observe($("devices"));
+document.addEventListener("visibilitychange", () => { if(!document.hidden) refresh(); });
 refresh(true).then(loadHistory);
-setInterval(refresh, 5000);
+setInterval(renderPoll, 250);
 setInterval(loadHistory, 60000);
 </script>
 </body>

@@ -17,7 +17,11 @@ import (
 //go:embed web
 var webFS embed.FS
 
-const queryTimeout = 5 * time.Second
+const (
+	queryTimeout = 5 * time.Second
+	// How far past its schedule the collector can run before the page calls it stalled.
+	stallMargin = 15 * time.Second
+)
 
 func env(key, def string) string {
 	if v := os.Getenv(key); v != "" {
@@ -54,7 +58,7 @@ func newMux(s *store, kick chan<- struct{}, interval time.Duration) *http.ServeM
 	mux.Handle("/", http.FileServer(http.FS(static)))
 	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(s.status())
+		json.NewEncoder(w).Encode(map[string]any{"poll": s.pollStatus(time.Now()), "devices": s.status()})
 	})
 	mux.HandleFunc("GET /api/series", func(w http.ResponseWriter, r *http.Request) {
 		rng, ok := ranges[r.URL.Query().Get("range")]
@@ -118,23 +122,40 @@ func newMux(s *store, kick chan<- struct{}, interval time.Duration) *http.ServeM
 	return mux
 }
 
-// run polls every interval, and right after the device list changes.
+// run polls every interval, and right after the device list changes. That extra
+// round leaves the schedule alone. The loop waits for the time it publishes, so
+// the page's countdown can't drift from what happens here.
 func run(s *store, interval time.Duration, kick <-chan struct{}) {
-	t := time.NewTicker(interval)
-	defer t.Stop()
+	next := time.Now()
 	for {
 		pollAll(s)
+		now := time.Now()
+		next = nextRound(next, now, interval)
+		s.roundFinished(now, next)
+		t := time.NewTimer(next.Sub(now))
 		select {
 		case <-t.C:
 		case <-kick:
+			t.Stop()
 		}
 	}
+}
+
+// nextRound is the first time on the schedule after now. A round that runs past
+// a due time skips it, so slow devices don't get polled back to back.
+func nextRound(due, now time.Time, interval time.Duration) time.Time {
+	for !due.After(now) {
+		due = due.Add(interval)
+	}
+	return due
 }
 
 // pollAll goes one device at a time: each connection is short, and these
 // devices accept only a few at once.
 func pollAll(s *store) {
-	for _, d := range s.list() {
+	devices := s.list()
+	s.roundStarted(time.Now(), len(devices))
+	for _, d := range devices {
 		start := time.Now()
 		r := reading{T: start, ID: d.ID}
 		dps, err := query(d.IP, d.ID, d.Key, queryTimeout)

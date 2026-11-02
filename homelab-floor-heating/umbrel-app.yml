@@ -4,7 +4,7 @@ name: Floor Heating
 tagline: History for Tuya Wi-Fi floor heating thermostats
 icon: https://raw.githubusercontent.com/MrShakhov/umbrel-homelab-store/main/homelab-floor-heating/web/icon.svg
 category: automation
-version: "0.3.0"
+version: "0.4.0"
 port: 7842
 description: >-
   Keeps the history that the vendor's mobile app does not. Polls Tuya Wi-Fi
@@ -36,7 +36,7 @@ repo: https://github.com/MrShakhov/umbrel-homelab-store
 support: https://github.com/MrShakhov/umbrel-homelab-store/issues
 gallery: []
 releaseNotes: >-
-  Keeps thermostats reachable when they stop answering ARP requests. Add each thermostat's MAC address under Devices.
+  Shows a countdown to the next poll in the page header, and a clear warning when polling stalls.
 dependencies: []
 path: ""
 defaultUsername: ""
