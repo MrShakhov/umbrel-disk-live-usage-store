@@ -133,7 +133,8 @@ set temperature, when the heating was on, and how many hours it ran.
 
 - **Read-only:** the only command in the code is the status query (`DP_QUERY`), so the app cannot change a thermostat.
 - **Protocol:** Tuya local protocol 3.3 on TCP 6668. Other versions aren't supported yet.
-- **No cloud at runtime:** the Tuya cloud is needed once, to get the local keys.
+- **No cloud at runtime:** the Tuya cloud is needed once, to get the local keys. The only traffic beyond your LAN is
+  [Telegram alerts](#telegram-alerts), if you turn them on.
 - **Limits:** the poller runs on Docker's bridge network, so it can't hear the devices' UDP broadcasts. Give each thermostat a
   fixed IP in your router's DHCP settings. Connections go one at a time and last a moment, and each device takes only a few at once.
 - A thermostat's key changes when it is paired again in the mobile app. The page then shows an error for that device.
@@ -157,6 +158,32 @@ with less access than it may look:
 - It runs as root because capabilities don't reach a non-root user, but with `DAC_OVERRIDE` dropped, so it can't open the
   `0600` device list. It reads only `neighbors.json`, which holds IP and MAC addresses and no keys. The folder is read-only.
 - If a thermostat's IP or MAC changes, update it under **Devices**. A wrong pinned address makes that thermostat unreachable.
+
+### Telegram alerts
+
+The app can message you when a thermostat stops answering, and again when it's back. A few failed polls in a row
+(5 by default) make an outage, so a single lost poll stays quiet. Each outage gets one message, with the error and a hint
+for the errors these thermostats are known for:
+
+```text
+🔴 Bedroom stopped answering 4 min ago.
+dial tcp 192.168.3.126:6668: i/o timeout
+If it's still in your router's list of clients, its local server may be stuck: …
+
+🟢 Bedroom answers again after 17 h 41 min.
+```
+
+To turn them on, open **Telegram alerts** on the app's page:
+
+1. In Telegram, create a bot with [@BotFather](https://t.me/BotFather) and paste its token.
+2. Send any message to your bot, then press **Find chat**. It fills in the chat ID from that message.
+3. Save, then press **Send test**.
+
+The token works like the local keys: it stays in `notify.json` in the data folder (mode 0600), the API never returns it,
+and **Turn off** deletes it. If a message can't be sent, the app tries again after 30 s, 2 min and 10 min, and the page shows
+the error. Outages are counted in memory, so after a restart a thermostat that is still down is reported again.
+
+The app can't report its own failure: if it or the Umbrel stops, no alert goes out.
 
 ### Setup
 
@@ -183,6 +210,10 @@ so the browser's clock doesn't matter, and `next_in_ms` goes negative once a pol
 ```json
 {"poll":{"state":"waiting","next_in_ms":42000,"last_ago_ms":18000},"devices":[{"id":"bf00…","name":"Bath","ip":"192.0.2.10"}]}
 ```
+
+`/api/notify` returns the alert settings without the token, and the error of the last message if it failed. `PUT` saves
+them (an empty `token` keeps the stored one), `DELETE` turns alerts off, `POST /api/notify/test` sends a test message,
+and `POST /api/notify/chat` finds the chat that last wrote to the bot.
 
 Data point numbers and scales differ between models, so the history stores them as the device reports them.
 `/api/series?range=24h|7d|30d` returns averaged buckets for the charts. Heating time counts polls that found the heating on,

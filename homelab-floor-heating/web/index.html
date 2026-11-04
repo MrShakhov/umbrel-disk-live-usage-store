@@ -86,8 +86,11 @@ button{font:inherit;color:var(--text);background:var(--card);border:1px solid va
 button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
 .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
 .note{color:var(--muted);font-size:12px;margin:8px 0 0}
-#msg{font-size:13px}
-#msg.bad{color:var(--bad)}
+.msg{font-size:13px}
+.bad{color:var(--bad)}
+.after{display:flex;align-items:center;gap:8px;color:var(--muted);white-space:nowrap}
+.after input{width:4.5em;flex:none}
+summary .state-note{margin-left:6px}
 </style>
 </head>
 <body>
@@ -119,13 +122,32 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff;fo
     <div class="actions">
       <button type="button" id="add">Add device</button>
       <button type="button" class="primary" id="save">Save</button>
-      <span id="msg"></span>
+      <span class="msg" id="msg"></span>
     </div>
     <p class="note">Leave Local key empty to keep the saved one. Keys stay in this app's data folder and are never shown again.
       The MAC address keeps a thermostat reachable when it stops answering ARP requests. You'll find it in your router's list of clients.</p>
     <h2>Import devices.json</h2>
     <textarea id="paste" placeholder="Paste the output of the TinyTuya wizard to fill the rows above" spellcheck="false" autocomplete="off"></textarea>
     <div class="actions"><button type="button" id="import">Fill rows</button></div>
+  </details>
+
+  <details class="card" id="alerts">
+    <summary>Telegram alerts<span class="state-note" id="alertState"></span></summary>
+    <div class="fields" style="margin-top:12px">
+      <input id="botToken" type="password" placeholder="Bot token" aria-label="Bot token" autocomplete="off" spellcheck="false">
+      <input id="chatId" placeholder="Chat ID" aria-label="Chat ID" autocomplete="off" spellcheck="false">
+      <label class="after">After <input id="after" type="number" min="1" max="60" step="1" value="5"> failed polls in a row</label>
+    </div>
+    <div class="actions">
+      <button type="button" id="findChat">Find chat</button>
+      <button type="button" class="primary" id="saveAlerts">Save</button>
+      <button type="button" id="testAlert">Send test</button>
+      <button type="button" id="offAlerts">Turn off</button>
+      <span class="msg" id="alertMsg"></span>
+    </div>
+    <p class="note">Get a message when a thermostat stops answering, and another when it's back. Create a bot with @BotFather
+      in Telegram and paste its token. Send any message to your bot, press Find chat, then save and send a test.
+      Leave the token empty to keep the saved one. It stays in this app's data folder and is never shown again.</p>
   </details>
 </main>
 <script>
@@ -377,9 +399,42 @@ function addRow(d = {}){
 const rows = () => [...document.querySelectorAll("#rows .fields")].map(row =>
   Object.fromEntries([...row.querySelectorAll("input")].map(i => [i.dataset.field, i.value.trim()])));
 
-function setMessage(text, bad){
-  $("msg").textContent = text;
-  $("msg").className = bad ? "bad" : "";
+function setMessage(text, bad, node = $("msg")){
+  node.textContent = text;
+  node.classList.toggle("bad", !!bad);
+}
+
+// Sends JSON to the app; rejects with the app's own error text.
+async function api(method, path, body){
+  const res = await fetch(path, body === undefined ? {method} :
+    {method, headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  if(!res.ok) throw new Error((await res.text()).trim() || "Error " + res.status);
+  return res.status === 204 ? null : res.json();
+}
+
+async function loadAlerts(){
+  let st;
+  try{ st = await api("GET", "api/notify"); }catch{ return; }
+  $("botToken").value = "";
+  $("botToken").placeholder = st.enabled ? "Bot token (saved)" : "Bot token";
+  $("chatId").value = st.chat_id || "";
+  $("after").value = st.after;
+  $("testAlert").disabled = $("offAlerts").disabled = !st.enabled;
+  $("alertState").textContent = !st.enabled ? "· off" : st.error ? "· last message failed" : "· on";
+  $("alertState").classList.toggle("bad", !!st.error);
+  if(st.error) setMessage("Last message failed: " + st.error, true, $("alertMsg"));
+}
+
+// Runs one action of the alerts form and reports how it went.
+function alertAction(id, busy, action){
+  $(id).onclick = async () => {
+    setMessage(busy, false, $("alertMsg"));
+    try{
+      setMessage(await action(), false, $("alertMsg"));
+    }catch(e){
+      setMessage(e instanceof TypeError ? "Cannot reach the app" : e.message, true, $("alertMsg"));
+    }
+  };
 }
 
 // Animates what the server last reported, counted on this page's own timer so
@@ -497,9 +552,34 @@ $("save").onclick = async () => {
   await loadHistory();
 };
 
+alertAction("findChat", "Looking for messages to your bot…", async () => {
+  const chat = await api("POST", "api/notify/chat", {token: $("botToken").value.trim()});
+  $("chatId").value = chat.chat_id;
+  return `Found ${chat.name || "your chat"}. Save to send alerts there`;
+});
+alertAction("saveAlerts", "Saving…", async () => {
+  await api("PUT", "api/notify", {token: $("botToken").value.trim(), chat_id: $("chatId").value.trim(), after: Number($("after").value)});
+  await loadAlerts();
+  return "Saved";
+});
+alertAction("testAlert", "Sending…", async () => {
+  try{
+    await api("POST", "api/notify/test", {});
+  }finally{
+    await loadAlerts();
+  }
+  return "Sent. Check Telegram";
+});
+alertAction("offAlerts", "Turning off…", async () => {
+  await api("DELETE", "api/notify");
+  await loadAlerts();
+  return "Alerts are off, the token is deleted";
+});
+
 new ResizeObserver(drawCharts).observe($("devices"));
 document.addEventListener("visibilitychange", () => { if(!document.hidden) refresh(); });
 refresh(true).then(loadHistory);
+loadAlerts();
 setInterval(renderPoll, 250);
 setInterval(loadHistory, 60000);
 </script>
