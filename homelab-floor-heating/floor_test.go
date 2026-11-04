@@ -157,7 +157,7 @@ func TestDevicesAPINeverReturnsKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mux := newMux(s, make(chan struct{}, 1), time.Minute)
+	mux := newMux(s, testNotifier(t), make(chan struct{}, 1), time.Minute)
 
 	body := `[{"id":"` + testID + `","name":"Bath","ip":"192.0.2.10","key":"` + testKey + `"}]`
 	if rec := put(mux, body, "text/plain"); rec.Code != http.StatusUnsupportedMediaType {
@@ -208,7 +208,7 @@ func TestRecordKeepsFailedPollsInHistory(t *testing.T) {
 	if err := s.record(reading{T: now.Add(time.Minute), ID: testID, Err: "timeout"}); err != nil {
 		t.Fatal(err)
 	}
-	mux := newMux(s, make(chan struct{}, 1), time.Minute)
+	mux := newMux(s, testNotifier(t), make(chan struct{}, 1), time.Minute)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/api/history/2026-11-01", nil))
 	lines := strings.Split(strings.TrimSpace(rec.Body.String()), "\n")
@@ -268,7 +268,7 @@ func TestStatusAPIReportsPollAndDevices(t *testing.T) {
 	now := time.Now()
 	s.roundFinished(now, now.Add(time.Minute))
 	rec := httptest.NewRecorder()
-	newMux(s, make(chan struct{}, 1), time.Minute).ServeHTTP(rec, httptest.NewRequest("GET", "/api/status", nil))
+	newMux(s, testNotifier(t), make(chan struct{}, 1), time.Minute).ServeHTTP(rec, httptest.NewRequest("GET", "/api/status", nil))
 	var got struct {
 		Poll    pollStatus     `json:"poll"`
 		Devices []deviceStatus `json:"devices"`
@@ -325,7 +325,7 @@ func TestKickPollsWithoutMovingTheSchedule(t *testing.T) {
 		t.Fatal(err)
 	}
 	kick := make(chan struct{}, 1)
-	go run(s, time.Hour, kick)
+	go run(s, time.Hour, kick, nil)
 	first, due := roundAfter(t, s, time.Time{})
 	if got := due.Sub(first); got <= 59*time.Minute || got > time.Hour {
 		t.Fatalf("next poll in %v", got)
@@ -346,7 +346,7 @@ func TestRunPublishesEachDueTime(t *testing.T) {
 		t.Fatal(err)
 	}
 	const interval = 20 * time.Millisecond
-	go run(s, interval, make(chan struct{}))
+	go run(s, interval, make(chan struct{}), nil)
 	finished, due := roundAfter(t, s, time.Time{})
 	_, next := roundAfter(t, s, finished)
 	if gap := next.Sub(due); gap <= 0 || gap%interval != 0 {
@@ -426,7 +426,7 @@ func TestSeriesSkipsBrokenLinesAndAPIChecksRange(t *testing.T) {
 	if err := s.record(reading{T: now, ID: testID, DPS: map[string]any{"24": 215.0}}); err != nil {
 		t.Fatal(err)
 	}
-	mux := newMux(s, make(chan struct{}, 1), time.Minute)
+	mux := newMux(s, testNotifier(t), make(chan struct{}, 1), time.Minute)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/api/series?range=24h", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"temp":21.5`) {
