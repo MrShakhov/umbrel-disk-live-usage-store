@@ -4,7 +4,7 @@ name: Kinoseed
 tagline: Find movies and series, pick a release, download it with qBittorrent
 icon: https://raw.githubusercontent.com/MrShakhov/umbrel-homelab-store/main/homelab-kinoseed/icon.svg
 category: media
-version: "0.6.1"
+version: "0.7.0"
 port: 8795
 description: >-
   A qBittorrent web UI built around movies and TV series. Search TMDB, pick a
@@ -14,8 +14,8 @@ description: >-
 
 
   Works with the qBittorrent and Prowlarr apps from the Umbrel App Store
-  without setup. On first launch Kinoseed asks for a free TMDB API key, which
-  it keeps on your Umbrel.
+  without setup. TMDB needs no key either: Kinoseed uses its own, and you can
+  enter yours in Settings, which it keeps on your Umbrel.
 developer: MrShakhov
 website: https://github.com/MrShakhov/umbrel-homelab-store#kinoseed
 submitter: MrShakhov
@@ -24,10 +24,12 @@ repo: ""
 support: https://github.com/MrShakhov/umbrel-homelab-store/issues
 gallery: []
 releaseNotes: >-
-  Fixes: sheets on a phone stay above the keyboard and keep the page behind
-  them still in Safari on iOS, an action on a torrent can't go out twice from
-  different places and says when it fails, and toasts stack instead of hiding
-  each other.
+  TMDB works without a key of your own, through Kinoseed's. Downloads sort by
+  status and, on a computer, by a click on a column's name; a torrent's own
+  speed limits show in the list; the torrent page changes the category and the
+  download order and sets a folder's priority at once. Search loads more
+  results page by page, each tab comes back where it was left, and a long list
+  of torrents stays responsive on a phone.
 dependencies:
   - qbittorrent
   - prowlarr

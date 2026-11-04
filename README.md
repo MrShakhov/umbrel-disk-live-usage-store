@@ -251,8 +251,9 @@ send it to qBittorrent and follow your downloads. Installable on your phone as a
 - **qBittorrent:** Kinoseed finds it on its own and signs in with Umbrel's default login `admin`/`adminadmin`. If the login was changed,
   Kinoseed asks for it once and keeps it.
 - **Prowlarr:** the API key is read from Prowlarr's `config.xml`. Its `config` folder is mounted read-only.
-- **TMDB:** on first launch Kinoseed asks for a free [TMDB API key](https://www.themoviedb.org/settings/api)
-  and keeps it on your Umbrel, in the app's data folder.
+- **TMDB:** needs no setup. Without a key of your own, Kinoseed's server sends TMDB calls through Kinoseed's TMDB proxy
+  on Cloudflare. A free [TMDB API key](https://www.themoviedb.org/settings/api) entered in Settings is kept on your Umbrel,
+  in the app's data folder, and TMDB calls then go to TMDB directly.
 - The UI is behind Umbrel's login through `app_proxy`.
 
 Image: `ghcr.io/mrshakhov/kinoseed` (linux/arm64 + linux/amd64), published by the Kinoseed repository's Release workflow

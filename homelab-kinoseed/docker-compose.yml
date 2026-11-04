@@ -8,7 +8,7 @@ services:
       APP_PORT: 8080
 
   web:
-    image: ghcr.io/mrshakhov/kinoseed:0.6.1@sha256:6ca6c392de48072a61e954c7598ff31f685906402f4c112b5af40a053da8fed3
+    image: ghcr.io/mrshakhov/kinoseed:0.7.0@sha256:75b7239ee26c8e06863f512cef83681cc36954858fc21a7a092cd6d3b6c8dfda
     restart: on-failure
     user: "1000:1000"
     environment:
@@ -21,7 +21,7 @@ services:
       PROWLARR_URL: http://prowlarr_server_1:9696
       PROWLARR_CONFIG_XML: /prowlarr/config.xml
     volumes:
-      # What Kinoseed keeps: settings saved from the app (TMDB key, qBittorrent login, download
+      # What Kinoseed keeps: settings saved from the app (a TMDB key of your own, qBittorrent login, download
       # defaults) and which movie or series each torrent is.
       - ${APP_DATA_DIR}/data:/data
       # The folder, not the file: a file mount would keep the old file after Prowlarr rewrites it.
