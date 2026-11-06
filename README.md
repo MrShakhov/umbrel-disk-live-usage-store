@@ -6,7 +6,7 @@ A personal store with three apps:
 |---|---|
 | [Disk Live Usage](#disk-live-usage) (`homelab-disk-live-usage`) | Live Usage for disks: who reads and writes to the disk |
 | [Floor Heating](#floor-heating) (`homelab-floor-heating`) | History for Tuya Wi-Fi floor heating thermostats |
-| [Kinoseed](#kinoseed) (`homelab-kinoseed`) | A qBittorrent web UI built around movies and TV series |
+| [Kinopeer](#kinopeer) (`homelab-kinopeer`) | A qBittorrent web UI built around movies and TV series |
 
 To add the store to umbrelOS, see [Install in umbrelOS](#install-in-umbrelos).
 
@@ -32,11 +32,11 @@ The last block is why this exists: on a Raspberry Pi the biggest disk consumer t
 
 ```
 umbrel-app-store.yml              id: homelab, the prefix for every app in this store
-homelab-kinoseed/
-  umbrel-app.yml                  Kinoseed manifest (port 8795 on Umbrel)
-  docker-compose.yml              app_proxy + web service (image built in the Kinoseed repository)
-  icon.svg                        app icon
-  data/                           copied to the app's data folder, where Kinoseed keeps its settings
+homelab-kinopeer/
+  umbrel-app.yml                  Kinopeer manifest (port 8797 on Umbrel)
+  docker-compose.yml              app_proxy + web service (image built in the Kinopeer repository)
+  icon.svg                        app icon, a copy of the Kinopeer repository's scripts/icons/icon.svg
+  data/                           copied to the app's data folder, where Kinopeer keeps its settings
 homelab-disk-live-usage/
   umbrel-app.yml                  manifest (port 7841 on Umbrel)
   docker-compose.yml              app_proxy + web service
@@ -242,32 +242,37 @@ Tests need only Docker:
 docker run --rm -v "$PWD/homelab-floor-heating":/src:ro -w /src -e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false -e GOCACHE=/tmp/c golang:1.23-alpine go test ./...
 ```
 
-## Kinoseed
+## Kinopeer
 
 A qBittorrent web UI built around movies and TV series: search TMDB, pick a release found by Prowlarr,
 send it to qBittorrent and follow your downloads. Installable on your phone as an app (PWA).
 
-- **Dependencies:** the **qBittorrent** and **Prowlarr** apps from the Umbrel App Store. Umbrel won't install Kinoseed without them.
-- **qBittorrent:** Kinoseed finds it on its own and signs in with Umbrel's default login `admin`/`adminadmin`. If the login was changed,
-  Kinoseed asks for it once and keeps it.
+- **Dependencies:** the **qBittorrent** and **Prowlarr** apps from the Umbrel App Store. Umbrel won't install Kinopeer without them.
+- **qBittorrent:** Kinopeer finds it on its own and signs in with Umbrel's default login `admin`/`adminadmin`. If the login was changed,
+  Kinopeer asks for it once and keeps it.
 - **Prowlarr:** the API key is read from Prowlarr's `config.xml`. Its `config` folder is mounted read-only.
-- **TMDB:** needs no setup. Without a key of your own, Kinoseed's server sends TMDB calls through Kinoseed's TMDB proxy
+- **TMDB:** needs no setup. Without a key of your own, Kinopeer's server sends TMDB calls through Kinopeer's TMDB proxy
   on Cloudflare. A free [TMDB API key](https://www.themoviedb.org/settings/api) entered in Settings is kept on your Umbrel,
   in the app's data folder, and TMDB calls then go to TMDB directly.
 - The UI is behind Umbrel's login through `app_proxy`.
 
-Image: `ghcr.io/mrshakhov/kinoseed` (linux/arm64 + linux/amd64), published by the Kinoseed repository's Release workflow
+Kinopeer was called Kinoseed up to 0.7.0 (`homelab-kinoseed`, port 8795), which left this store with 0.7.1. An Umbrel
+that has Kinoseed keeps running it, with no more updates and TMDB only through a key of your own. To move over, install
+Kinopeer, then copy `settings.json` and `matches.json` from Kinoseed's data folder to Kinopeer's before uninstalling Kinoseed.
+
+Image: `ghcr.io/kinopeer/kinopeer` (linux/arm64 + linux/amd64), published by the Kinopeer repository's Release workflow
 on a `v*` tag. `docker-compose.yml` pins it by tag and digest.
 
-New release: in `homelab-kinoseed/`, bump `version` and `releaseNotes` in `umbrel-app.yml` and the image tag and digest
-in `docker-compose.yml` (the digest is in the GitHub Release), then commit and push. Umbrel offers the update.
+New release: in `homelab-kinopeer/`, bump `version` and `releaseNotes` in `umbrel-app.yml` and the image tag and digest
+in `docker-compose.yml` (the digest is in the GitHub Release), then commit and push. Umbrel offers the update. When the
+icon changes, copy the Kinopeer repository's `scripts/icons/icon.svg` over `icon.svg`.
 
 ## Install in umbrelOS
 
 1. Open **App Store** → the **⋯** menu at the top right → **Community App Stores**.
 2. Paste the repository URL (`https://github.com/MrShakhov/umbrel-homelab-store`) → **Add**.
 3. Open the new **Homelab App Store** → pick an app → **Install**.
-4. Disk Live Usage opens at `http://umbrel.local:7841`, Floor Heating at `http://umbrel.local:7842`, Kinoseed at `http://umbrel.local:8795`.
+4. Disk Live Usage opens at `http://umbrel.local:7841`, Floor Heating at `http://umbrel.local:7842`, Kinopeer at `http://umbrel.local:8797`.
 
 After a new release (see above) Umbrel offers the update on its own.
 
