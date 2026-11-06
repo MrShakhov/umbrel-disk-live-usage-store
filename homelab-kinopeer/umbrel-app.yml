@@ -1,11 +1,11 @@
 manifestVersion: 1
-id: homelab-kinoseed
-name: Kinoseed
+id: homelab-kinopeer
+name: Kinopeer
 tagline: Find movies and series, pick a release, download it with qBittorrent
-icon: https://raw.githubusercontent.com/MrShakhov/umbrel-homelab-store/main/homelab-kinoseed/icon.svg
+icon: https://raw.githubusercontent.com/MrShakhov/umbrel-homelab-store/main/homelab-kinopeer/icon.svg
 category: media
-version: "0.7.0"
-port: 8795
+version: "0.7.1"
+port: 8797
 description: >-
   A qBittorrent web UI built around movies and TV series. Search TMDB, pick a
   release found by Prowlarr and send it to qBittorrent, then follow the
@@ -14,22 +14,20 @@ description: >-
 
 
   Works with the qBittorrent and Prowlarr apps from the Umbrel App Store
-  without setup. TMDB needs no key either: Kinoseed uses its own, and you can
+  without setup. TMDB needs no key either: Kinopeer uses its own, and you can
   enter yours in Settings, which it keeps on your Umbrel.
 developer: MrShakhov
-website: https://github.com/MrShakhov/umbrel-homelab-store#kinoseed
+website: https://github.com/MrShakhov/umbrel-homelab-store#kinopeer
 submitter: MrShakhov
 submission: https://github.com/MrShakhov/umbrel-homelab-store
 repo: ""
 support: https://github.com/MrShakhov/umbrel-homelab-store/issues
 gallery: []
 releaseNotes: >-
-  TMDB works without a key of your own, through Kinoseed's. Downloads sort by
-  status and, on a computer, by a click on a column's name; a torrent's own
-  speed limits show in the list; the torrent page changes the category and the
-  download order and sets a folder's priority at once. Search loads more
-  results page by page, each tab comes back where it was left, and a long list
-  of torrents stays responsive on a phone.
+  Kinoseed is now Kinopeer, with a new icon. It's a new app: to keep
+  Kinoseed's settings and title matches, copy settings.json and matches.json
+  from Kinoseed's data folder to Kinopeer's before uninstalling Kinoseed. On a computer, Downloads keeps its
+  whole header at the top again.
 dependencies:
   - qbittorrent
   - prowlarr
