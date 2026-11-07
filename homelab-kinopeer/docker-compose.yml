@@ -8,7 +8,7 @@ services:
       APP_PORT: 8080
 
   web:
-    image: ghcr.io/kinopeer/kinopeer:0.7.1@sha256:face0291e1fdfa65d16ba82e685f8a791186479dd720328616f4fe677546cf1a
+    image: ghcr.io/kinopeer/kinopeer:0.7.2@sha256:1560885787a566ef71d881f982316f33823b08cd4be7bf398de35e5f116c7c11
     restart: on-failure
     user: "1000:1000"
     environment:
