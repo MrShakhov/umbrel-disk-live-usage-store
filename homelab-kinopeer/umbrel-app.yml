@@ -4,7 +4,7 @@ name: Kinopeer
 tagline: Find movies and series, pick a release, download it with qBittorrent
 icon: https://raw.githubusercontent.com/MrShakhov/umbrel-homelab-store/main/homelab-kinopeer/icon.svg
 category: media
-version: "0.7.1"
+version: "0.7.2"
 port: 8797
 description: >-
   A qBittorrent web UI built around movies and TV series. Search TMDB, pick a
@@ -24,10 +24,10 @@ repo: ""
 support: https://github.com/MrShakhov/umbrel-homelab-store/issues
 gallery: []
 releaseNotes: >-
-  Kinoseed is now Kinopeer, with a new icon. It's a new app: to keep
-  Kinoseed's settings and title matches, copy settings.json and matches.json
-  from Kinoseed's data folder to Kinopeer's before uninstalling Kinoseed. On a computer, Downloads keeps its
-  whole header at the top again.
+  A security release: Kinopeer's server passes on to qBittorrent only
+  Kinopeer's own requests, so a page on another site can't change your
+  torrents through it, and the browser runs only Kinopeer's own code.
+  Kinopeer is now free software under the GNU GPL, version 3 or later.
 dependencies:
   - qbittorrent
   - prowlarr
