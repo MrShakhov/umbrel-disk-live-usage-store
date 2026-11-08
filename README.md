@@ -245,7 +245,8 @@ docker run --rm -v "$PWD/homelab-floor-heating":/src:ro -w /src -e CGO_ENABLED=0
 ## Kinopeer
 
 A qBittorrent web UI built around movies and TV series: search TMDB, pick a release found by Prowlarr,
-send it to qBittorrent and follow your downloads. Installable on your phone as an app (PWA).
+send it to qBittorrent and follow your downloads. Installable on your phone as an app (PWA). Its code, issues and
+ideas are in the [Kinopeer repository](https://github.com/kinopeer/kinopeer).
 
 - **Dependencies:** the **qBittorrent** and **Prowlarr** apps from the Umbrel App Store. Umbrel won't install Kinopeer without them.
 - **qBittorrent:** Kinopeer finds it on its own and signs in with Umbrel's default login `admin`/`adminadmin`. If the login was changed,
@@ -260,7 +261,7 @@ Kinopeer was called Kinoseed up to 0.7.0 (`homelab-kinoseed`, port 8795), which 
 that has Kinoseed keeps running it, with no more updates and TMDB only through a key of your own. To move over, install
 Kinopeer, then copy `settings.json` and `matches.json` from Kinoseed's data folder to Kinopeer's before uninstalling Kinoseed.
 
-Image: `ghcr.io/kinopeer/kinopeer` (linux/arm64 + linux/amd64), published by the Kinopeer repository's Release workflow
+Image: `ghcr.io/kinopeer/kinopeer` (linux/arm64 + linux/amd64), published by the [Kinopeer repository](https://github.com/kinopeer/kinopeer)'s Release workflow
 on a `v*` tag. `docker-compose.yml` pins it by tag and digest.
 
 New release: in `homelab-kinopeer/`, bump `version` and `releaseNotes` in `umbrel-app.yml` and the image tag and digest
