@@ -17,7 +17,7 @@ description: >-
   without setup. TMDB needs no key either: Kinopeer uses its own, and you can
   enter yours in Settings, which it keeps on your Umbrel.
 developer: MrShakhov
-website: https://github.com/kinopeer/kinopeer
+website: https://kinopeer.com
 submitter: MrShakhov
 submission: https://github.com/MrShakhov/umbrel-homelab-store
 repo: https://github.com/kinopeer/kinopeer
