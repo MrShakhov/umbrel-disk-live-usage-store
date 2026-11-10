@@ -4,7 +4,7 @@ name: Kinopeer
 tagline: Find movies and series, pick a release, download it with qBittorrent
 icon: https://raw.githubusercontent.com/MrShakhov/umbrel-homelab-store/main/homelab-kinopeer/icon.svg
 category: media
-version: "0.8.0"
+version: "1.0.0"
 port: 8797
 description: >-
   A qBittorrent web UI built around movies and TV series. Search TMDB, pick a
@@ -24,12 +24,11 @@ repo: https://github.com/kinopeer/kinopeer
 support: https://github.com/kinopeer/kinopeer/issues
 gallery: []
 releaseNotes: >-
-  Releases read better: more of the ways indexers name them are understood,
-  theater rips show as their own source, and the filters can show releases
-  whose name doesn't say. On a computer the releases table sorts by a click
-  on a column's name, and Downloads can be reversed anywhere. Over Umbrel's
-  HTTPS, the installed app goes through Umbrel's sign-in again when it lapses
-  and offers to open again when Umbrel renews its certificate.
+  The first stable version, the one for the official Umbrel App Store.
+  Downloads' torrents on a phone and the install card are spaced evenly
+  under the header, the Downloads table's column names on a computer sit
+  close under it in the installed app too, and a theater rip named with a
+  space where its hyphen goes shows as CAM.
 dependencies:
   - qbittorrent
   - prowlarr
